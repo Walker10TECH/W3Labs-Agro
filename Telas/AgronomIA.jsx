@@ -626,7 +626,6 @@ Exemplo de resposta JSON:
       { label: 'Estoque', query: 'Análise do meu estoque geral', icon: 'archive-outline' },
       { label: 'Consumo Diesel', query: 'Análise do consumo de diesel', icon: 'speedometer-outline' },
     ], []);
-J
     const helpOptions = useMemo(() => [
       { label: 'Adicionar Plantio', query: 'Como faço para registrar um novo plantio?', icon: 'add-circle-outline' },
       { label: 'Adicionar Colheita', query: 'Como registro uma colheita?', icon: 'add-circle-outline' },
