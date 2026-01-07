@@ -196,10 +196,16 @@ const AddOrEditColheitaModal = ({ itemId, onClose, onSaveSuccess }) => {
     if (!validateForm()) {
       return common.Alert.alert('Erro de Validação', 'Por favor, corrija os campos destacados.');
     }
+    const userUid = auth.currentUser?.uid;
+    if (!userUid) {
+        common.Alert.alert("Erro", "Utilizador não autenticado.");
+        return;
+    }
+
     setSaving(true);
     const equip = equipamentos.find(e => e.id === data.equipamentoId);
-    const id = itemId || doc(collection(db, 'colheitas')).id; // Nota: A collection dummy é usada só para gerar ID
-    
+    const id = itemId || doc(collection(db, 'users', userUid, 'colheitas')).id;
+
     const dataToSave = {
       id,
       cultura: data.cultura.trim(),

@@ -227,64 +227,39 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
             const umidSalvar = parseMoeda(data.umidade);
             const ventoSalvar = parseMoeda(data.velocidadeVento);
 
-            // --- GESTÃO DE ESTOQUE (ROLLBACK & COMMIT) ---
-            
-            // 1. Estorno (Devolver ao estoque o que foi gasto no registro anterior, se houver edição)
-            if (originalItem?.estoqueItemId && (originalItem.estoqueItemId !== data.estoqueItemId || itemId)) {
-                // Se mudou o item ou apenas estamos editando a quantidade do mesmo item
-                // A lógica mais segura: Devolve TUDO do antigo e subtrai TUDO do novo.
-                const oldQtd = originalItem.quantidadeUtilizada || 0;
-                if (oldQtd > 0) {
-                    const oldStockRef = doc(db, 'users', userUid, 'estoqueGeral', originalItem.estoqueItemId);
-                    const oldDoc = await getDoc(oldStockRef);
-                    if (oldDoc.exists()) {
-                        batch.update(oldStockRef, { quantidade: (oldDoc.data().quantidade || 0) + oldQtd });
-                    }
-                }
+            // --- GESTÃO DE ESTOQUE ATÔMICA (W3Labs Standard) ---
+            const stockChanges = new Map();
+
+            // 1. Adiciona de volta a quantidade original (se estiver editando um registro existente)
+            if (originalItem?.estoqueItemId && originalItem.quantidadeUtilizada > 0) {
+                const originalQtd = originalItem.quantidadeUtilizada;
+                stockChanges.set(originalItem.estoqueItemId, (stockChanges.get(originalItem.estoqueItemId) || 0) + originalQtd);
             }
 
-            // 2. Baixa (Retirar do estoque o novo valor)
+            // 2. Subtrai a nova quantidade a ser utilizada
             if (data.estoqueItemId && qtdSalvar > 0) {
-                const stockRef = doc(db, 'users', userUid, 'estoqueGeral', data.estoqueItemId);
-                
-                // Nota: Em um sistema de altíssima concorrência, usaríamos transactions. 
-                // Para este escopo, batch com leitura prévia no useEffect é aceitável, mas vamos garantir lendo de novo.
-                // Como não podemos ler dentro do batch logic sem transaction, assumimos a validação do frontend, 
-                // mas a lógica de estorno acima garante a integridade matemática da operação de "troca".
-                // Para simplificar a lógica do batch e evitar race condition de leitura, vamos confiar no cálculo de diff 
-                // SE for o mesmo item, OU fazer a operação completa se mudou.
-                
-                // Simplificação Robusta W3Labs:
-                // Se for o MESMO item, aplicamos o delta. Se for OUTRO, aplicamos a baixa total (já que o estorno devolveu o antigo).
-                
-                if (originalItem?.estoqueItemId === data.estoqueItemId) {
-                    // Re-ler para garantir atomicidade real exigiria transaction.
-                    // Vamos usar increment/decrement do Firestore para ser atômico de verdade.
-                    // Porém, increment não aceita valores calculados dinamicamente baseados em leitura prévia sem transaction.
-                    // Abordagem: Ler estado atual do banco para garantir.
-                    const currentStockDoc = await getDoc(stockRef);
-                    if (currentStockDoc.exists()) {
-                        const currentQtd = currentStockDoc.data().quantidade || 0;
-                        // O estorno já foi agendado no batch acima? Não, o estorno acima é condicional.
-                        // Vamos simplificar: A lógica acima (Passo 1) devolve o original.
-                        // Então aqui (Passo 2) nós SEMPRE subtraímos o NOVO valor total.
-                        // Isso funciona para edição do mesmo item ou troca de item.
-                        
-                        const novaQuantidadeEstoque = (currentQtd + (originalItem?.estoqueItemId === data.estoqueItemId ? (originalItem.quantidadeUtilizada || 0) : 0)) - qtdSalvar;
-                         
-                        if (novaQuantidadeEstoque < 0) throw new Error("Estoque insuficiente ao processar transação.");
-                        batch.update(stockRef, { quantidade: novaQuantidadeEstoque });
-                    }
-                } else {
-                    // Item novo (ou registro novo)
-                    const currentStockDoc = await getDoc(stockRef);
-                    if (currentStockDoc.exists()) {
-                        const novaQuantidadeEstoque = (currentStockDoc.data().quantidade || 0) - qtdSalvar;
-                        if (novaQuantidadeEstoque < 0) throw new Error("Estoque insuficiente.");
-                        batch.update(stockRef, { quantidade: novaQuantidadeEstoque });
-                    }
-                }
+                stockChanges.set(data.estoqueItemId, (stockChanges.get(data.estoqueItemId) || 0) - qtdSalvar);
             }
+
+            // 3. Prepara as atualizações do estoque para o batch
+            const stockUpdatePromises = Array.from(stockChanges.entries()).map(async ([stockItemId, change]) => {
+                if (change === 0) return null; // Nenhuma alteração necessária
+                const stockRef = doc(db, 'users', userUid, 'estoqueGeral', stockItemId);
+                const stockDoc = await getDoc(stockRef); // Leitura necessária para obter o valor atual
+                if (!stockDoc.exists()) throw new Error(`Item de estoque com ID ${stockItemId} não foi encontrado.`);
+                
+                const newQty = (stockDoc.data().quantidade || 0) + change;
+                if (newQty < 0) throw new Error(`Estoque insuficiente para "${stockDoc.data().nome}". Saldo final seria ${newQty.toFixed(2)}.`);
+                
+                return { ref: stockRef, newQty };
+            });
+
+            const stockUpdates = (await Promise.all(stockUpdatePromises)).filter(Boolean);
+            stockUpdates.forEach(({ ref, newQty }) => {
+                batch.update(ref, { quantidade: newQty });
+            });
+
+            // --- FIM DA GESTÃO DE ESTOQUE ---
 
             // --- SALVAR REGISTRO ---
             const docId = itemId || doc(collection(db, 'users', userUid, 'pulverizacoes')).id;
@@ -331,10 +306,14 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
     };
 
     const onDelete = useCallback(() => {
-        common.handleFirestoreDelete(db, auth, 'pulverizacoes', itemId, `Aplicação em ${data.talhao}`, 
-            // Callback de estorno manual (se a exclusão genérica não lidar com isso, idealmente implementar cloud function ou lógica aqui)
-            // Nesta arquitetura, assumimos exclusão simples. Para produção, deve-se estornar o estoque.
-            null, 
+        // A lógica de estorno de estoque na exclusão é tratada pela função handleFirestoreDelete em Common.jsx
+        common.handleFirestoreDelete(
+            db, 
+            auth, 
+            'pulverizacoes', 
+            itemId, 
+            `Aplicação em ${data.talhao || 'local desconhecido'}`, 
+            null,
             onSaveSuccess
         );
     }, [itemId, data.talhao, onSaveSuccess]);

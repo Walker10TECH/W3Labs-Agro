@@ -419,6 +419,7 @@ const Stack = createStackNavigator();
 const AppNavigator = () => {
   const { isAuthenticated, initializing, setClima, setLocation, setAddress } = useAppContext();
   const [isChatbotVisible, setChatbotVisible] = useState(false);
+  const toggleChatbot = useCallback(() => setChatbotVisible(prev => !prev), []);
 
   // Roda APENAS UMA VEZ quando o usuário é autenticado.
   useEffect(() => {
@@ -455,12 +456,6 @@ const AppNavigator = () => {
   // A lógica de sincronização ao reconectar foi removida,
   // pois o Firestore gerencia a persistência offline e a
   // sincronização automaticamente.
-
-  const toggleChatbot = useCallback(() => {
-    setChatbotVisible(prev => !prev);
-  }, []);
-
-  const closeChatbot = useCallback(() => setChatbotVisible(false), []);
 
   if (initializing) {
     return (
@@ -512,13 +507,16 @@ const AppNavigator = () => {
 
       {isAuthenticated && (
         <>
-          {ChatbotFAB && <ChatbotFAB onPress={toggleChatbot} />}
-          {isChatbotVisible && (
-            <>
-              <Pressable style={common.styles.chatbotBackdrop} onPress={closeChatbot} />
-              {AgronomiaChatbot && <AgronomiaChatbot onClose={closeChatbot} />}
-            </>
-          )}
+          <ChatbotFAB onPress={toggleChatbot} />
+          <common.Modal
+            animationType="fade"
+            transparent={true}
+            visible={isChatbotVisible}
+            onRequestClose={toggleChatbot}
+          >
+            <common.Pressable style={common.styles.chatbotBackdrop} onPress={toggleChatbot} />
+            <AgronomiaChatbot onClose={toggleChatbot} />
+          </common.Modal>
         </>
       )}
     </View>

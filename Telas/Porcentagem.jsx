@@ -342,7 +342,7 @@ const AddOrEditPluviometroModal = ({ itemId, onClose, onSaveSuccess }) => {
 
     const onDelete = useCallback(() => {
         const displayValue = data.milimetros ? `${data.milimetros}mm` : 'Registro';
-        common.handleFirestoreDelete(db, auth, 'pluviometro', itemId, `Medição de ${displayValue}`, null, onSaveSuccess, true);
+        common.handleFirestoreDelete(db, auth, 'pluviometro', itemId, `Medição de ${displayValue}`, null, onSaveSuccess);
     }, [itemId, data.milimetros, onSaveSuccess]);
 
     if (loading) {

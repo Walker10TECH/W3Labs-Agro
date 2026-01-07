@@ -22,7 +22,7 @@ try {
 const MANUAL_CONFIG = {
     maxTitleLength: 100,
     maxDescriptionLength: 500,
-    maxFileSize: 750 * 1024 * 1024, // 15MB em bytes
+    maxFileSize: 950 * 1024, // 950 KB em bytes (margem de segurança para o limite de 1MB do Firestore)
     supportedFileTypes: ['application/pdf'],
     pdfLoadTimeout: 20000,
 };
@@ -31,7 +31,7 @@ const ERROR_MESSAGES = {
     REQUIRED_TITLE: 'Título é obrigatório',
     REQUIRED_FILE: 'É necessário selecionar um PDF ou inserir uma URL',
     INVALID_FILE_TYPE: 'Apenas arquivos PDF são permitidos',
-    FILE_TOO_LARGE: `Arquivo muito grande. Máximo ${MANUAL_CONFIG.maxFileSize / (1024 * 1024)}MB`,
+    FILE_TOO_LARGE: `Arquivo muito grande. Máximo de ${Math.floor(MANUAL_CONFIG.maxFileSize / 1024)} KB para armazenamento interno.`,
     INVALID_URL: 'URL inválida',
     TITLE_TOO_LONG: `Título deve ter no máximo ${MANUAL_CONFIG.maxTitleLength} caracteres`,
     DESCRIPTION_TOO_LONG: `Descrição deve ter no máximo ${MANUAL_CONFIG.maxDescriptionLength} caracteres`,
@@ -444,8 +444,14 @@ export const AddOrEditManualItemScreen = ({ route, navigation }) => {
             return common.Alert.alert('Erro de Validação', 'Por favor, corrija os campos destacados.');
         }
         
+        const userUid = auth.currentUser?.uid;
+        if (!userUid) {
+            common.Alert.alert("Erro", "Utilizador não autenticado.");
+            return;
+        }
+
         setSaving(true);
-        const id = itemId || doc(collection(db, 'manualItems')).id;
+        const id = itemId || doc(collection(db, 'users', userUid, 'manualItems')).id;
         
         try {
             let fileBase64 = data.arquivoBase64;
@@ -495,51 +501,25 @@ export const AddOrEditManualItemScreen = ({ route, navigation }) => {
         }
     }, [validateForm, data, file, rawFile, itemId, categoryId, navigation]);
 
-    const confirmAction = useCallback((title, message, onConfirm) => {
-      if (common.Platform.OS === 'web') {
-          if (window.confirm(`${title}\n${message}`)) {
-              onConfirm();
-          }
-      } else {
-          common.Alert.alert(
-              title,
-              message,
-              [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Confirmar', style: 'destructive', onPress: onConfirm },
-              ]
-          );
-      }
-    }, []);
     const onDelete = useCallback(() => {
-      const performDelete = () => {
-          const onDeletionComplete = async () => {
-              try {
-                  await AsyncStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`);
-                  navigation.goBack();
-              } catch (e) {
-                  console.error("Erro ao limpar o cache do manual após a exclusão:", e);
-                  common.Alert.alert(
-                      "Aviso",
-                      "O manual foi excluído, mas houve um erro ao limpar o cache local."
-                  );
-                  navigation.goBack();
-              }
-          };
-  
-          common.handleFirestoreDelete(
-              db,
-              auth,
-              'manualItems',
-              itemId,
-              `Manual "${data.titulo || 'item'}"`,
-              null, // navigation é tratado no onDeletionComplete
-              onDeletionComplete
-          );
-      };
-  
-      confirmAction("Confirmar Exclusão", `Deseja excluir o manual "${data.titulo || 'item'}"?`, performDelete);
-  }, [itemId, data.titulo, navigation]);
+        const onDeletionComplete = async () => {
+            try {
+                // Limpa o cache local do PDF após a exclusão bem-sucedida no Firestore
+                await AsyncStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`);
+                navigation.goBack();
+            } catch (e) {
+                console.error("Erro ao limpar o cache do manual após a exclusão:", e);
+                // Informa o usuário, mas continua a navegação
+                common.Alert.alert("Aviso", "O manual foi excluído, mas houve um erro ao limpar o cache local.");
+                navigation.goBack();
+            }
+        };
+
+        // A função handleFirestoreDelete já lida com a confirmação do usuário
+        common.handleFirestoreDelete(
+            db, auth, 'manualItems', itemId, `Manual "${data.titulo || 'item'}"`, null, onDeletionComplete
+        );
+    }, [itemId, data.titulo, navigation]);
     
     if (loading) {
         return (

@@ -589,82 +589,6 @@ export const Header = ({ title, navigation }) => (
   </SafeAreaView>
 );
 
-// Componente customizado para headers
-export const CustomHeader = ({ title, navigation }) => (
-  <SafeAreaView style={styles.headerSafeArea}>
-    <View style={styles.headerContainer}>
-      {navigation?.canGoBack() ? (
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon}>
-          <Icon name="arrow-back" size={28} color={theme.colors.textWhite} />
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.headerIcon} />
-      )}
-      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-      <View style={styles.headerIcon} />
-    </View>
-  </SafeAreaView>
-);
-
-export const Formulario = ({
-  title,
-  children,
-  onSubmit,
-  onCancel,
-  submitText = "Salvar",
-  onDelete,
-  saving,
-  navigation,
-  itemId
-}) => {
-  return (
-    <SafeAreaView style={styles.containerLight}>
-      <Header title={title} navigation={navigation} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          style={styles.formScrollView}
-          contentContainerStyle={styles.formContainer}
-          showsVerticalScrollIndicator={true}
-          persistentScrollbar={true}
-        >
-          {children}
-        </ScrollView>
-
-        <View style={styles.formButtonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.formButton,
-              styles.submitButton,
-              { opacity: saving ? 0.7 : 1, flex: 1 }
-            ]}
-            onPress={onSubmit}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color={theme.colors.textWhite} />
-            ) : (
-              <Text style={styles.buttonText}>{submitText}</Text>
-            )}
-          </TouchableOpacity>
-
-          {itemId && onDelete && (
-            <TouchableOpacity
-              style={[styles.deleteIconButton, { marginLeft: 10 }]}
-              onPress={onDelete}
-              disabled={saving}
-            >
-              <MaterialIcons name="delete" size={28} color={theme.colors.textRed} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-};
-
 export const ModalFormLayout = ({
   title,
   children,
@@ -1034,70 +958,6 @@ export const FAB = ({ onPress }) => (
   </TouchableOpacity>
 );
 
-export const GenericListScreen = ({
-  navigation,
-  collectionName,
-  filters,
-  screenTitle,
-  renderItem,
-  fabAction,
-  orderByField = 'criadoEm',
-  orderDirection = 'desc',
-  ListHeaderComponent = null
-}) => {
-  // ATUALIZADO: Usando o novo hook para Firestore
-  const { items, loading } = useFirestoreCollection(collectionName, {
-    filters,
-    sortBy: orderByField,
-    order: orderDirection
-  });
-
-  return (
-    <View style={styles.container}>
-      <Header title={screenTitle} navigation={navigation} />
-      <View style={[styles.contentWrapper, { maxWidth: 800 }]}>
-        {loading ? (
-          <ActivityIndicator
-            style={{ marginTop: 50 }}
-            size="large"
-            color={theme.colors.primary}
-          />
-        ) : (
-          <FlatList
-            data={items}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            ListHeaderComponent={ListHeaderComponent}
-            contentContainerStyle={
-              Platform.OS === 'web'
-                ? { flexGrow: 1, paddingBottom: 120, paddingRight: 8 }
-                : { flexGrow: 1, paddingBottom: 120 }
-            }
-            showsVerticalScrollIndicator={Platform.OS === 'web' ? true : false}
-            style={
-              Platform.OS === 'web' && {
-                scrollbarColor: `${theme.colors.secondaryText} ${theme.colors.lightGray}`,
-                scrollbarWidth: 'thin'
-              }
-            }
-            ListEmptyComponent={() => (
-              <Text style={styles.emptyListText}>
-                Nenhum item encontrado.
-              </Text>
-            )}
-          />
-        )}
-      </View>
-
-      {fabAction && (
-        <TouchableOpacity style={styles.fab} onPress={fabAction}>
-          <Icon name="add" size={32} color="white" />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-};
-
 export const StatBox = ({ label, value, color }) => (
   <View style={styles.statBox}>
     <Text style={[styles.statBoxLabel, { color: color || theme.colors.secondaryText }]}>
@@ -1182,6 +1042,16 @@ export const DataChart = ({ data, title, xAxisKey, yAxisKey }) => {
   );
 };
 
+// Alias para Header
+export const CustomHeader = Header;
+
+
+/* =====================================================
+   STYLES
+   ===================================================== */
+
+const isWeb = Platform.OS === 'web';
+
 export const styles = StyleSheet.create({
   // Containers and General Layout
   container: {
@@ -1216,11 +1086,22 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     width: moderateScale(64),
     height: moderateScale(64),
-    borderRadius: moderateScale(32),
-    justifyContent: 'center',    alignItems: 'center',    ...(Platform.OS === 'android' && { elevation: 14 }),
-    boxShadow: '0px 10px 24px rgba(103,164,33,0.22)',
+    borderRadius: moderateScale(32), 
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(103,164,33,0.22)',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 1,
+        shadowRadius: 24,
+      },
+      android: { elevation: 14 },
+      web: { boxShadow: '0px 10px 24px rgba(103,164,33,0.22)' }
+    }),
     zIndex: 910,
-    border: '2px solid rgba(255,255,255,0.22)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.22)',
   },
 
   // State Texts (Empty, Error)
@@ -1248,8 +1129,17 @@ export const styles = StyleSheet.create({
   headerSafeArea: {
     backgroundColor: theme.colors.primary,
     borderBottomLeftRadius: moderateScale(32),
-    borderBottomRightRadius: moderateScale(32),    ...(Platform.OS === 'android' && { elevation: 18 }),
-    boxShadow: '0px 12px 32px rgba(103,164,33,0.28)',
+    borderBottomRightRadius: moderateScale(32),
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(103,164,33,0.28)',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 1,
+        shadowRadius: 32,
+      },
+      android: { elevation: 20 },
+      web: { boxShadow: '0px 12px 32px rgba(103,164,33,0.28)' }
+    }),
   },
   headerContainer: {
     flexDirection: 'row',
@@ -1265,7 +1155,9 @@ export const styles = StyleSheet.create({
     color: theme.colors.textWhite,
     fontFamily: theme.fonts.bold,
     letterSpacing: 0.4,
-    textShadow: '0px 1px 2px rgba(0,0,0,0.08)',
+    textShadowColor: 'rgba(0,0,0,0.08)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   headerIcon: {
     width: moderateScale(48),
@@ -1279,8 +1171,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     width: 'auto',
     height: 'auto',
-    opacity: 0.7  , // Ajusta a opacidade da imagem de fundo
-    
+    opacity: 0.7, // Ajusta a opacidade da imagem de fundo
   },
   authContent: {
     flex: 1,
@@ -1295,8 +1186,18 @@ export const styles = StyleSheet.create({
     width: moderateScale(96),
     alignSelf: 'center',
     marginBottom: verticalScale(20),
-    borderRadius: moderateScale(22),    backgroundColor: theme.colors.lightGray,    ...(Platform.OS === 'android' && { elevation: 6 }),
-    boxShadow: '0px 6px 12px rgba(0,0,0,0.08)',
+    borderRadius: moderateScale(22),
+    backgroundColor: theme.colors.lightGray,
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: { elevation: 8 },
+      web: { boxShadow: '0px 6px 12px rgba(0,0,0,0.08)' }
+    }),
   },
   appName: {
     fontSize: moderateScale(34),
@@ -1304,8 +1205,10 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: verticalScale(18),
     fontFamily: theme.fonts.bold,
-    letterSpacing: 1,    
-    textShadow: '0px 3px 6px rgba(0,0,0,0.15)',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.15)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 6,
   },
   authTitle: {
     fontSize: moderateScale(24),
@@ -1325,23 +1228,32 @@ export const styles = StyleSheet.create({
     gap: scale(12),
     borderWidth: 1,
     borderColor: 'rgba(20, 170, 0, 1)',
-    ...(Platform.OS === 'android' && { elevation: 3 }),
   },
   authInput: {
     flex: 1,
     height: verticalScale(56),
     color: theme.colors.textBlack,
     fontSize: moderateScale(16),
-    fontFamily: theme.fonts.regular,
-    letterSpacing: 0.2,
+    fontFamily: theme.fonts.regular,    letterSpacing: 0.2,
   },
   authButton: {
     backgroundColor: theme.colors.secondary,
     paddingVertical: verticalScale(16),
     borderRadius: moderateScale(14),
-    alignItems: 'center',    marginVertical: verticalScale(12),    ...(Platform.OS === 'android' && { elevation: 6 }),
-    boxShadow: `0px 6px 16px ${theme.colors.secondary}2E`,
-    border: '1px solid rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    marginVertical: verticalScale(12),
+    ...Platform.select({
+      ios: {
+        shadowColor: `${theme.colors.secondary}2E`,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 8 },
+      web: { boxShadow: `0px 6px 16px ${theme.colors.secondary}2E` }
+    }),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   buttonText: {
     color: theme.colors.textWhite,
@@ -1379,8 +1291,17 @@ export const styles = StyleSheet.create({
   homeHeaderGradient: {
     width: '100%',
     borderBottomLeftRadius: moderateScale(36),
-    borderBottomRightRadius: moderateScale(36),    ...(Platform.OS === 'android' && { elevation: 16 }),
-    boxShadow: '0px 14px 36px rgba(103, 164, 33, 0.25)',
+    borderBottomRightRadius: moderateScale(36),
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(103, 164, 33, 0.25)',
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: 1,
+        shadowRadius: 36,
+      },
+      android: { elevation: 20 },
+      web: { boxShadow: '0px 14px 36px rgba(103, 164, 33, 0.25)' }
+    }),
     alignItems: 'center',
   },
   homeHeaderContent: {
@@ -1466,11 +1387,22 @@ export const styles = StyleSheet.create({
     margin: moderateScale(12),
     height: verticalScale(130),
     backgroundColor: theme.colors.alternate,
-    borderRadius: moderateScale(24),    justifyContent: 'center',
-    alignItems: 'center',    ...(Platform.OS === 'android' && { elevation: 8 }),
+    borderRadius: moderateScale(24),
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: moderateScale(14),
-    boxShadow: '0px 8px 20px rgba(103,164,33,0.12)',
-    border: '1px solid rgba(255,255,255,0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(103,164,33,0.12)',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 10 },
+      web: { boxShadow: '0px 8px 20px rgba(103,164,33,0.12)' }
+    }),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   homeGridIcon: {
     marginBottom: verticalScale(12),
@@ -1492,8 +1424,18 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...(Platform.OS === 'android' && { elevation: 6 }),    boxShadow: '0px 6px 16px rgba(103, 164, 33, 0.09)',
-    border: '1px solid rgba(236, 239, 241, 0.85)',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(103, 164, 33, 0.09)',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 7 },
+      web: { boxShadow: '0px 6px 16px rgba(103, 164, 33, 0.09)' }
+    }),
+    borderWidth: 1,
+    borderColor: 'rgba(236, 239, 241, 0.85)',
     gap: scale(16),
   },
   listItemIconContainer: {
@@ -1503,7 +1445,8 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(103,164,33,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    border: '1px solid rgba(103, 164, 33, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(103, 164, 33, 0.12)',
   },
   listItemContent: {
     flex: 1,
@@ -1537,12 +1480,22 @@ export const styles = StyleSheet.create({
     paddingVertical: verticalScale(18),
     paddingHorizontal: scale(28),
     borderRadius: moderateScale(18),
-    marginBottom: verticalScale(20),
+    marginBottom: verticalScale(20), 
     alignItems: 'center',
     flexDirection: 'row',
     gap: scale(14),
-    ...(Platform.OS === 'android' && { elevation: 6 }),
-    boxShadow: `0px 8px 18px ${theme.colors.primary}2E`,    border: '1px solid rgba(255,255,255,0.12)',
+    ...Platform.select({
+      ios: {
+        shadowColor: `${theme.colors.primary}2E`,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 1,
+        shadowRadius: 18,
+      },
+      android: { elevation: 6 },
+      web: { boxShadow: `0px 8px 18px ${theme.colors.primary}2E` }
+    }),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   managerButtonText: {
     color: theme.colors.textWhite,
@@ -1593,9 +1546,19 @@ export const styles = StyleSheet.create({
     width: '92%',
     maxWidth: 680,
     backgroundColor: '#ffffff',
-    borderRadius: moderateScale(22),
-    padding: moderateScale(28),    ...(Platform.OS === 'android' && { elevation: 20 }),
-    border: '1px solid rgba(236, 239, 241, 0.9)',
+    borderRadius: moderateScale(22), 
+    padding: moderateScale(28),
+    ...(Platform.OS === 'web' 
+        ? { boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }
+        : { 
+            elevation: 20,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.15,
+            shadowRadius: 24,
+          }),
+    borderWidth: 1,
+    borderColor: 'rgba(236, 239, 241, 0.9)',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1613,7 +1576,7 @@ export const styles = StyleSheet.create({
     padding: moderateScale(10),
     borderRadius: moderateScale(14),
     backgroundColor: theme.colors.lightGray,
-    ...(Platform.OS === 'android' && { elevation: 2 }),  },
+  },
   formLabel: {
     fontSize: moderateScale(16),
     fontFamily: theme.fonts.medium,
@@ -1630,7 +1593,8 @@ export const styles = StyleSheet.create({
     color: theme.colors.textBlack,
     marginBottom: verticalScale(16),
     fontFamily: theme.fonts.regular,
-    border: '1px solid #e0e0e0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   disabledInput: {
     backgroundColor: 'rgba(240,240,240,0.9)',
@@ -1642,15 +1606,16 @@ export const styles = StyleSheet.create({
     borderRadius: moderateScale(14),
     marginBottom: verticalScale(16),
     justifyContent: 'center',
-    border: '1px solid rgba(139, 195, 74, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 195, 74, 0.14)',
   },
   dateInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: verticalScale(16),
     gap: 0,
-    borderRadius: moderateScale(14),
-    overflow: 'hidden',    ...(Platform.OS === 'android' && { elevation: 1 }),
+    borderRadius: moderateScale(14), 
+    overflow: 'hidden',
   },
   dateIconButton: {
     backgroundColor: theme.colors.primary,
@@ -1662,7 +1627,8 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.lightGray,
     padding: moderateScale(14),
-    justifyContent: 'center',    border: '1px solid #e0e0e0',
+    justifyContent: 'center',
+    borderWidth: 1,
     borderColor: '#e0e0e0',
     borderLeftWidth: 0,
   },
@@ -1676,9 +1642,19 @@ export const styles = StyleSheet.create({
     borderRadius: moderateScale(14),
     padding: moderateScale(14),
     width: '90%',
-    maxWidth: 420,    ...(Platform.OS === 'android' && { elevation: 10 }),
-    boxShadow: `0px 0px 12px ${theme.colors.primary}1F`,
-    border: '1px solid rgba(236, 239, 241, 0.9)',
+    maxWidth: 420,
+    ...Platform.select({
+      ios: {
+        shadowColor: `${theme.colors.primary}1F`,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: { elevation: 5 },
+      web: { boxShadow: `0px 0px 12px ${theme.colors.primary}1F` }
+    }),
+    borderWidth: 1,
+    borderColor: 'rgba(236, 239, 241, 0.9)',
   },
   chipContainer: {
     flexDirection: 'row',
@@ -1692,9 +1668,9 @@ export const styles = StyleSheet.create({
     borderRadius: moderateScale(18),
     backgroundColor: theme.colors.lightGray,
     marginBottom: verticalScale(8),
-    border: '1px solid #e0e0e0',
-  },
-  chipActive: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },  chipActive: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
     ...(Platform.OS === 'android' && { elevation: 4 }),
@@ -1731,20 +1707,21 @@ export const styles = StyleSheet.create({
   formButton: {
     paddingVertical: verticalScale(14),
     borderRadius: moderateScale(14),
-    alignItems: 'center',
-    ...(Platform.OS === 'android' && { elevation: 4 }),
+    alignItems: 'center', 
   },
   submitButton: {
     backgroundColor: theme.colors.primary,
-    border: '1px solid rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   deleteIconButton: {
     justifyContent: 'center',
     alignItems: 'center',
     padding: moderateScale(12),
     borderRadius: moderateScale(12),
-    backgroundColor: theme.colors.lightGray,    ...(Platform.OS === 'android' && { elevation: 3 }),
-    border: '1px solid rgba(211,47,47,0.12)',
+    backgroundColor: theme.colors.lightGray,
+    borderWidth: 1,
+    borderColor: 'rgba(211,47,47,0.12)',
   },
   formSectionTitle: {
     fontSize: moderateScale(20),
@@ -1764,7 +1741,8 @@ export const styles = StyleSheet.create({
     borderRadius: moderateScale(12),
     marginBottom: verticalScale(12),
     gap: scale(12),
-    ...(Platform.OS === 'android' && { elevation: 3 }),    border: '1px solid rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
 
   // Specific Lists (Manuals, Diesel)
@@ -1774,8 +1752,10 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.textWhite,
     padding: moderateScale(18),
     borderRadius: moderateScale(16),
-    marginBottom: verticalScale(14),    gap: scale(14),
-    border: '1px solid rgba(236,239,241,0.9)',
+    marginBottom: verticalScale(14),
+    gap: scale(14),
+    borderWidth: 1,
+    borderColor: 'rgba(236,239,241,0.9)',
   },
   manualsListImage: {
     width: moderateScale(52),
@@ -1795,8 +1775,9 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.textWhite,
     borderRadius: moderateScale(18),
     padding: moderateScale(22),
-    marginVertical: verticalScale(16),    ...(Platform.OS === 'android' && { elevation: 8 }),
-    border: '1px solid rgba(236,239,241,0.9)',
+    marginVertical: verticalScale(16),
+    borderWidth: 1,
+    borderColor: 'rgba(236,239,241,0.9)',
   },
   dieselSummaryTitle: {
     fontFamily: theme.fonts.medium,
@@ -1849,13 +1830,29 @@ export const styles = StyleSheet.create({
     width: moderateScale(64), // Largura
     height: moderateScale(64), // Altura
     borderRadius: moderateScale(32), // Totalmente redondo
-    backgroundColor: theme.colors.primary, // Cor principal
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center', // Centraliza o ícone verticalmente
     alignItems: 'center', // Centraliza o ícone horizontalmente
-    ...(Platform.OS === 'android' && { elevation: 12 }), // Sombra para Android    zIndex: 1000, // Garante que fique acima de outros elementos    boxShadow: `0px 8px 16px ${theme.colors.primary}40`,
-    border: '2px solid rgba(255, 255, 255, 0.3)',
+    ...(Platform.OS === 'android' && { elevation: 12 }), // Sombra para Android
+    zIndex: 1000, // Garante que fique acima de outros elementos
+    ...Platform.select({
+      ios: {
+        shadowColor: `${theme.colors.primary}40`,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 12 },
+      web: { boxShadow: `0px 8px 16px ${theme.colors.primary}40` }
+    }),
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
 
+  chatbotHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   chatbotBackdrop: {
     position: 'absolute',
     ...StyleSheet.absoluteFillObject, // Ocupa toda a tela
@@ -1865,15 +1862,26 @@ export const styles = StyleSheet.create({
 
   chatbotPopupContainer: {
     position: 'absolute',
-    bottom: Platform.select({ web: verticalScale(110), default: verticalScale(110) }), // Posição acima do FAB
-    right: Platform.select({ web: scale(28), default: '3%' }), // Posição à direita
-    width: Platform.select({ web: scale(450), default: '94%' }), // Largura
+    bottom: Platform.select({ web: verticalScale(110), default: verticalScale(110) }), // Posição acima do FAB,
+    right: Platform.select({ web: scale(28), default: '3%' }), // Posição à direita,
+    width: Platform.select({ web: scale(450), default: '94%' }), // Largura,
     maxWidth: 450, // Largura máxima
     height: '75%', // Altura
     maxHeight: 650, // Altura máxima
     backgroundColor: theme.colors.textWhite, // Fundo branco opaco
     borderRadius: moderateScale(24),
-    ...(Platform.OS === 'android' && { elevation: 16 }), // Sombra para Android    boxShadow: '0px 10px 20px rgba(0, 0, 0, 0.15)', // Sombra para web
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(0, 0, 0, 0.15)',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: {
+        elevation: 16
+      },
+      web: { boxShadow: '0px 10px 20px rgba(0, 0, 0, 0.15)' }
+    }),
     zIndex: 999, // Acima do backdrop
     overflow: 'hidden',
   },
@@ -1885,17 +1893,7 @@ export const styles = StyleSheet.create({
     padding: moderateScale(16),
     borderBottomWidth: 1,
     borderColor: theme.colors.lightGray,
-    backgroundColor: theme.colors.textWhite,
-  },
-
-  chatbotHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  chatbotHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
   },
 
   headerButton: {
@@ -1909,13 +1907,12 @@ export const styles = StyleSheet.create({
   chatbotTitle: {
     fontSize: moderateScale(20),
     fontFamily: theme.fonts.bold,
-    color: theme.colors.primary,
+    color: theme.colors.textWhite,
   },
 
   chatContainer: {
-    flex: 1,
-    padding: moderateScale(16),
-    backgroundColor: '#ffffffff', // Fundo estilo WhatsApp
+    flex: 1, // O padding será aplicado no contentContainer da FlatList
+    backgroundColor: theme.colors.background,
   },
 
   messageBubble: {
@@ -1934,12 +1931,10 @@ export const styles = StyleSheet.create({
 
   botMessage: {
     backgroundColor: theme.colors.textWhite,
-    backgroundColor: theme.colors.textWhite, // MODIFIED from lightGray
     alignSelf: 'flex-start',
-    borderBottomLeftRadius: moderateScale(6), // Canto pontiagudo
-    borderWidth: 1, // ADDED
-    borderColor: theme.colors.lightGray, // ADDED
-    boxShadow: '0px 4px 8px rgba(0,0,0,0.04)', // ADDED
+    borderBottomLeftRadius: moderateScale(6),
+    borderWidth: 1,
+    borderColor: theme.colors.lightGray,
   },
 
   userMessageText: {
@@ -1955,7 +1950,20 @@ export const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     lineHeight: moderateScale(22),
   },
-  
+
+  systemMessage: {
+    alignSelf: 'center',
+    backgroundColor: theme.colors.lightGray,
+    borderWidth: 0,
+    borderRadius: moderateScale(10),
+  },
+  systemMessageText: {
+    fontFamily: theme.fonts.medium,
+    fontSize: moderateScale(13),
+    color: theme.colors.secondaryText,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
   typingBubble: { // NEW
     alignSelf: 'flex-start',
     backgroundColor: theme.colors.lightGray,
@@ -1965,6 +1973,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: scale(16),
     marginBottom: verticalScale(12),
     maxWidth: '25%',
+    flexDirection: 'row',
   },
 
   copyButton: {
@@ -2012,7 +2021,7 @@ export const styles = StyleSheet.create({
     height: moderateScale(48),
     borderRadius: moderateScale(24),
     justifyContent: 'center',
-    alignItems: 'center',    ...(Platform.OS === 'android' && { elevation: 2 }),
+    alignItems: 'center',
     shadowOpacity: 0.1,
   },
 
@@ -2056,30 +2065,22 @@ export const styles = StyleSheet.create({
 
   chatbotWelcomeContainer: {
     flexGrow: 1,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    justifyContent: 'center', // MODIFIED
-    alignItems: 'center', // MODIFIED
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: moderateScale(28),
     backgroundColor: theme.colors.textWhite,
   },
 
   chatbotWelcomeTitle: {
-    fontSize: moderateScale(38),
-    fontSize: moderateScale(28), // MODIFIED
+    fontSize: moderateScale(28),
     fontFamily: theme.fonts.bold,
-    color: theme.colors.textBlack, // Alterado para preto
-    lineHeight: moderateScale(46),
-    letterSpacing: -0.5,
     color: theme.colors.textBlack,
-    textAlign: 'center', // ADDED
-    marginTop: verticalScale(16), // ADDED
-    marginBottom: verticalScale(8), // ADDED
+    textAlign: 'center',
+    marginBottom: verticalScale(8),
   },
 
   chatbotWelcomeSubtitle: {
-    fontSize: moderateScale(14),
-    fontSize: moderateScale(16), // NEW
+    fontSize: moderateScale(16),
     fontFamily: theme.fonts.regular,
     color: theme.colors.secondaryText,
     textAlign: 'center',
@@ -2095,9 +2096,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1, // ADDED
-    borderColor: '#e0e0e0', // ADDED
-    boxShadow: '0px 4px 8px rgba(0,0,0,0.04)', // ADDED
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
 
   chatbotPromptCardText: {
@@ -2117,20 +2117,25 @@ export const styles = StyleSheet.create({
 
   chatbotQuickOption: {
     flex: 1,
-    padding: moderateScale(12),
     width: '48%', // MODIFIED for 2 columns
     padding: moderateScale(16), // MODIFIED
     backgroundColor: theme.colors.textWhite,
-    borderRadius: moderateScale(12),
     borderRadius: moderateScale(16), // MODIFIED
     alignItems: 'center',
-    justifyContent: 'center',    margin: 5,
-    border: '1px solid rgba(0,0,0,0.05)',    ...(Platform.OS === 'android' && { elevation: 2 }),
     justifyContent: 'center',
     margin: '1%', // MODIFIED
     borderWidth: 1, // MODIFIED
     borderColor: theme.colors.lightGray, // MODIFIED
-    boxShadow: '0px 4px 8px rgba(0,0,0,0.05)', // ADDED
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(0,0,0,0.05)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 3 },
+      web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.05)' }
+    }),
     minHeight: verticalScale(100), // ADDED
   },
 
@@ -2145,17 +2150,19 @@ export const styles = StyleSheet.create({
   },
   
   settingsContainer: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: theme.colors.background,
     zIndex: 100,
-    padding: moderateScale(16),
   },
 
   settingsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(20),
+    padding: moderateScale(16),
+    borderBottomWidth: 1,
+    borderColor: theme.colors.lightGray,
+    backgroundColor: theme.colors.textWhite,
   },
 
   settingsTitle: {
@@ -2198,19 +2205,77 @@ export const styles = StyleSheet.create({
     paddingVertical: verticalScale(4),
   },
 
+  // Estilos para o Modal de Configurações da IA
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 500,
+    height: '80%',
+    backgroundColor: theme.colors.background,
+    borderRadius: 20,
+    overflow: 'hidden'
+  },
+  sectionTitle: {
+    fontFamily: theme.fonts.bold,
+    fontSize: moderateScale(14),
+    color: theme.colors.secondaryText,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: verticalScale(8),
+  },
+  sectionSubtitle: {
+    fontFamily: theme.fonts.regular,
+    fontSize: moderateScale(14),
+    color: theme.colors.secondaryText,
+    marginBottom: verticalScale(20),
+  },
+  modelOptionCard: {
+    backgroundColor: theme.colors.textWhite,
+    padding: moderateScale(16),
+    borderRadius: 12,
+    marginBottom: verticalScale(12),
+    borderWidth: 2,
+    borderColor: theme.colors.lightGray,
+  },
+  modelOptionCardActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: '#f1f8e9',
+  },
+  modelName: {
+    fontFamily: theme.fonts.bold,
+    fontSize: moderateScale(16),
+    color: theme.colors.textBlack,
+  },
+  modelDesc: {
+    fontFamily: theme.fonts.regular,
+    fontSize: moderateScale(13),
+    color: theme.colors.secondaryText,
+    marginTop: 4,
+  },
+  radioButtonOuter: {
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#ccc', justifyContent: 'center', alignItems: 'center', marginLeft: 16,
+  },
+  radioButtonInner: {
+    width: 12, height: 12, borderRadius: 6, backgroundColor: theme.colors.primary,
+  },
+
   // Location
   locationPreviewContainer: {
     alignItems: 'center',
     marginBottom: verticalScale(14),
-    borderWidth: 1, borderColor: 'rgba(236,239,241,0.9)',    borderRadius: moderateScale(14),
-    padding: moderateScale(12),    backgroundColor: theme.colors.lightGray,    ...(Platform.OS === 'android' && { elevation: 2 }),
+    borderWidth: 1, borderColor: 'rgba(236,239,241,0.9)',    borderRadius: moderateScale(14), 
+    padding: moderateScale(12),    backgroundColor: theme.colors.lightGray,
   },
   mapPreview: {
     width: '100%',
     height: verticalScale(240),
-    borderRadius: moderateScale(12),    marginBottom: verticalScale(10),
-    backgroundColor: '#e0e0e0',    overflow: 'hidden',
-    ...(Platform.OS === 'android' && { elevation: 2 }),
+    borderRadius: moderateScale(12),    marginBottom: verticalScale(10), 
+    backgroundColor: '#e0e0e0',    overflow: 'hidden', 
   },
   locationCoordsText: {
     fontSize: moderateScale(13),
@@ -2229,9 +2294,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: theme.colors.secondary,
     paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    borderRadius: moderateScale(12),
-    gap: scale(10),    ...(Platform.OS === 'android' && { elevation: 3 }),    border: '1px solid rgba(255,255,255,0.12)',
+    paddingHorizontal: scale(16),    borderRadius: moderateScale(12),
+    gap: scale(10),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   locationButtonText: {
     color: theme.colors.textWhite,
@@ -2244,8 +2310,17 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     margin: 12,
     padding: moderateScale(14),
-    backgroundColor: theme.colors.textWhite,    borderRadius: moderateScale(12),    ...(Platform.OS === 'android' && { elevation: 3 }),
-    boxShadow: '0px 4px 8px rgba(0,0,0,0.05)',
+    backgroundColor: theme.colors.textWhite,
+    borderRadius: moderateScale(12),    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(0,0,0,0.05)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 3 },
+      web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.05)' }
+    }),
   },
   statBoxLabel: {
     fontSize: moderateScale(14),
@@ -2265,6 +2340,17 @@ export const styles = StyleSheet.create({
     backgroundColor: theme.colors.lightGray,
     resizeMode: 'contain',
   },
+  sourcesContainer: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  sourceLink: {
+    color: theme.colors.primary,
+    textDecorationLine: 'underline',
+    fontSize: 12,
+  },
 });
 
   // Markdown styles moderno e refinado
@@ -2274,7 +2360,7 @@ export const styles = StyleSheet.create({
       fontFamily: theme.fonts.regular, // Corrigido para usar a fonte do tema
       fontSize: moderateScale(16),
       lineHeight: moderateScale(28), // Aumenta o espaçamento entre linhas para melhor legibilidade
-    },    
+    },
     heading1: {
       flexDirection: 'row',
       fontSize: moderateScale(32),
@@ -2415,17 +2501,14 @@ export const styles = StyleSheet.create({
       color: theme.colors.textBlack,
     },
     link: {
-      color: theme.colors.textBlack, // Alterado para preto
-      textDecorationLine: 'underline', // Mantém o sublinhado para indicar que é um link
+      color: theme.colors.primary,
+      textDecorationLine: 'underline',
     },
     tr: {
       borderBottomWidth: 1,
       borderColor: 'rgba(0,0,0,0.1)',
       flexDirection: 'row',
       // Estilo de zebra para melhor leitura
-      '&:nth-child(even)': {
-        backgroundColor: 'rgba(103, 164, 33, 0.02)',
-      },
     },
     td: {
       flex: 1,

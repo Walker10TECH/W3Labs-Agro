@@ -377,36 +377,17 @@ const AddOrEditDieselModal = ({ itemId, onClose, onSaveSuccess, estoqueAtual }) 
         }
     };
 
-    const confirmAction = useCallback((title, message, onConfirm) => {
-        if (common.Platform.OS === 'web') {
-            if (window.confirm(`${title}\n${message}`)) {
-                onConfirm();
-            }
-        } else {
-            common.Alert.alert(
-                title,
-                message,
-                [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Confirmar', style: 'destructive', onPress: onConfirm },
-                ]
-            );
-        }
-    }, []);
-
     const onDelete = useCallback(() => {
         const equipName = data.equipamentoNome || 'equipamento';
         const itemName = `Abastecimento de ${data.litros}L para ${equipName}`;
-        const message = `Deseja excluir "${itemName}"? Esta ação não pode ser desfeita.`;
-
+        
+        // A função handleFirestoreDelete já exibe um alerta de confirmação.
+        // Para a coleção 'diesel', a exclusão do registro de saída recalcula
+        // automaticamente o estoque total, efetivamente "restaurando" os litros.
         if (common.handleFirestoreDelete) {
-            confirmAction(
-                "Confirmar Exclusão",
-                message,
-                () => common.handleFirestoreDelete(db, auth, 'diesel', itemId, itemName, null, onSaveSuccess)
-            );
+            common.handleFirestoreDelete(db, auth, 'diesel', itemId, itemName, null, onSaveSuccess);
         }
-    }, [itemId, data.litros, data.equipamentoNome, onSaveSuccess, confirmAction]);
+    }, [itemId, data.litros, data.equipamentoNome, onSaveSuccess]);
     
     if (loading) {
         return (
