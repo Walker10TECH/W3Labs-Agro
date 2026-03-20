@@ -1,4 +1,5 @@
-import {
+import React, {
+    useCallback,
     useEffect,
     useMemo,
     useRef,
@@ -6,7 +7,9 @@ import {
 } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Dimensions,
+    FlatList,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -21,6 +24,8 @@ import {
 
 // Módulos Expo e Vector Icons
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 
 // Firebase
@@ -29,6 +34,7 @@ import { auth, db, signOut } from '../firebaseConfig'; // Certifique-se de que e
 
 // Bibliotecas de IA
 import { Ollama } from "ollama";
+import MarkdownDisplay from 'react-native-markdown-display';
 
 // =====================================================================
 // 1️⃣ CONFIGURAÇÕES GERAIS E TEMA
@@ -38,6 +44,7 @@ const CONFIG = {
     OLLAMA_HOST: 'http://127.0.0.1:11434',
     OLLAMA_API_KEY: process.env.EXPO_PUBLIC_OLLAMA_API_KEY || '',
     WEATHER_API_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
+    // Configurações Gerais
     MAX_TOOL_LOOPS: 5,
 };
 
@@ -59,7 +66,12 @@ const MODES = {
 };
 
 const APPROVED_MODELS = [
-    { id: 'gpt-oss:20b-cloud', name: 'W3Labs 20B (Local)', desc: 'Execução local via Ollama. Gratuito e Privado.' }
+    {
+        id: 'gpt-oss:20b-cloud',
+        name: 'W3Labs 20B (Local)',
+        desc: 'Execução local via Ollama. Gratuito e Privado.',
+        provider: 'ollama'
+    }
 ];
 
 const { width } = Dimensions.get('window');
@@ -67,6 +79,60 @@ const { width } = Dimensions.get('window');
 // =====================================================================
 // 2️⃣ CAMADA DE SERVIÇO DE IA (OLLAMA E TOOLS)
 // =====================================================================
+
+/**
+ * Busca resultados na web usando a API da Ollama.
+ * @param {string} query - A string de busca.
+ * @returns {Promise<string>} - JSON stringificado com os resultados ou erro.
+ */
+async function fetchWebSearchResults(query) {
+    if (!CONFIG.OLLAMA_API_KEY) {
+        return JSON.stringify({ error: "A chave da API (OLLAMA_API_KEY) não está configurada." });
+    }
+
+    try {
+        const response = await fetch('https://ollama.com/api/web_search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.OLLAMA_API_KEY}`,
+            },
+            body: JSON.stringify({ query: query, max_results: 5 }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`API de busca retornou ${response.status}: ${errorBody}`);
+        }
+
+        const data = await response.json();
+        return JSON.stringify(data.results || []);
+    } catch (error) {
+        console.error("Erro na busca web:", error);
+        return JSON.stringify({ error: `Falha na busca web: ${error.message}` });
+    }
+}
+
+async function fetchWebPage(url) {
+    if (!CONFIG.OLLAMA_API_KEY) {
+        return JSON.stringify({ error: "A chave da API (OLLAMA_API_KEY) não está configurada." });
+    }
+
+    try {
+        const response = await fetch('https://ollama.com/api/web_fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CONFIG.OLLAMA_API_KEY}` },
+            body: JSON.stringify({ url: url }),
+        });
+
+        if (!response.ok) throw new Error(`API de fetch retornou ${response.status}`);
+        const data = await response.json();
+        return `Título: ${data.title}\n\nConteúdo: ${data.content}`.substring(0, 8000);
+    } catch (error) {
+        console.error("Erro no fetch da web:", error);
+        return JSON.stringify({ error: `Falha ao buscar URL: ${error.message}` });
+    }
+}
 
 class OllamaService {
     constructor(host, apiKey) {
@@ -78,7 +144,6 @@ class OllamaService {
     }
 
     async chatStream(payload, onChunk) {
-        // NOTE: The 'ollama' package might face CORS issues on web. A proxy server, like the one in server.js, is recommended.
         try { 
             const response = await this.client.chat({
                 ...payload,
@@ -106,6 +171,19 @@ class OllamaService {
             return finalMetrics;
         } catch (error) {
             console.error('Ollama Service Error:', error);
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                throw new Error(
+                    "Falha de Conexão (CORS/Network).\n" +
+                    "1. Verifique se o Ollama está rodando.\n" +
+                    "2. Se estiver na Web, inicie o Ollama com: OLLAMA_ORIGINS=\"*\" ollama serve"
+                );
+            }
+            if (error.message && error.message.includes('401')) {
+                throw new Error("Erro 401: Não autorizado. Verifique sua API KEY.");
+            }
+            if (error.status === 404) {
+                 throw new Error(`Modelo '${payload.model}' não encontrado. Execute 'ollama pull ${payload.model}' no terminal.`);
+            }
             throw error;
         }
     }
@@ -118,7 +196,7 @@ const TOOLS_DEFINITION = [
         type: 'function',
         function: {
             name: 'get_farm_data',
-            description: 'Busca registros técnicos internos da fazenda no Firebase.',
+            description: 'Busca registros técnicos internos da fazenda (banco de dados).',
             parameters: {
                 type: 'object',
                 required: ['topic'],
@@ -126,12 +204,46 @@ const TOOLS_DEFINITION = [
                     topic: {
                         type: 'string',
                         description: 'Setor para consulta.',
-                        enum: ['colheitas', 'diesel', 'plantios', 'pulverizacoes', 'pluviometro', 'estoqueGeral', 'inventario', 'revisoes', 'andamento']
+                        enum: ['colheitas', 'diesel', 'plantios', 'pulverizacoes', 'pluviometro', 'estoqueGeral', 'inventario', 'revisoes']
                     },
                 },
             },
         },
-    }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'web_search',
+            description: 'Busca informações na web. Use para cotações, notícias, e informações gerais.',
+            parameters: {
+                type: 'object',
+                required: ['query'],
+                properties: {
+                    query: {
+                        type: 'string',
+                        description: 'O que pesquisar (ex: "preço soja paraná", "clima para amanhã").',
+                    },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'web_fetch',
+            description: 'Obtém o conteúdo completo de uma página da web a partir de uma URL específica. Use após uma busca para aprofundar em um resultado.',
+            parameters: {
+                type: 'object',
+                required: ['url'],
+                properties: {
+                    url: {
+                        type: 'string',
+                        description: 'A URL completa da página a ser buscada.',
+                    },
+                },
+            },
+        },
+    },
 ];
 
 const TOOLS_IMPLEMENTATION = {
@@ -148,7 +260,6 @@ const TOOLS_IMPLEMENTATION = {
             estoqueGeral: { orderBy: null }, 
             inventario: { orderBy: 'dataAquisicao' },
             revisoes: { orderBy: 'dataRevisao' },
-            andamento: { orderBy: 'dataAtt' },
         };
 
         if (!schemaMap[topic]) return JSON.stringify({ error: `Tópico '${topic}' inválido.` });
@@ -181,92 +292,341 @@ const TOOLS_IMPLEMENTATION = {
         } catch (e) {
             return JSON.stringify({ error: `Erro DB: ${e.message}` });
         }
-    }
+    },
+    web_search: async ({ query }) => {
+        return await fetchWebSearchResults(query);
+    },
+    web_fetch: async ({ url }) => {
+        return await fetchWebPage(url);
+    },
 };
+
+async function processAttachment(uri) {
+    try {
+        return await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+        });
+    } catch (error) {
+        throw new Error("Falha na leitura do arquivo.");
+    }
+}
 
 // =====================================================================
 // 3️⃣ COMPONENTES DO CHATBOT (AGRONOMIA)
 // =====================================================================
 
-const SettingsModal = ({ visible, onClose, location, onRequestLocation, locationLoading }) => (
+const SettingsModal = ({ visible, onClose, currentModel, onSelectModel, location, onRequestLocation, locationLoading }) => (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
         <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
                 <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Configurações</Text>
-                    <TouchableOpacity onPress={onClose}>
+                    <TouchableOpacity onPress={onClose} style={styles.headerButton}>
                         <Ionicons name="close" size={24} color={THEME.secondaryText} />
                     </TouchableOpacity>
                 </View>
                 <ScrollView contentContainerStyle={{ padding: 20 }}>
+                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 15 }}>
+                        Motor de Inferência
+                    </Text>
+                    {APPROVED_MODELS.map((model) => (
+                        <TouchableOpacity
+                            key={model.id}
+                            style={[
+                                styles.modelOptionCard,
+                                currentModel === model.id && styles.modelOptionCardActive
+                            ]}
+                            onPress={() => onSelectModel(model.id)}
+                        >
+                            <View style={{ flex: 1 }}>
+                                <Text style={[
+                                    styles.modelName,
+                                    currentModel === model.id && { color: THEME.primary }
+                                ]}>
+                                    {model.name}
+                                </Text>
+                                <Text style={styles.modelDesc}>{model.desc}</Text>
+                            </View>
+                            <View style={[
+                                styles.radioButtonOuter,
+                                currentModel === model.id && { borderColor: THEME.primary }
+                            ]}>
+                                {currentModel === model.id && <View style={styles.radioButtonInner} />}
+                            </View>
+                        </TouchableOpacity>
+                    ))}
+
+                    <View style={{ height: 30 }} />
+
                     <Text style={styles.sectionTitle}>Dados da Sessão</Text>
-                    <TouchableOpacity onPress={onRequestLocation} disabled={locationLoading} style={styles.locationBtn}>
+                    <TouchableOpacity
+                        onPress={onRequestLocation}
+                        disabled={locationLoading}
+                        style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: 15, borderRadius: 10, flexDirection: 'row', alignItems: 'center' }}
+                    >
                         <Ionicons name="location-outline" size={24} color={THEME.secondaryText} />
                         <View style={{ marginLeft: 15, flex: 1 }}>
-                            <Text style={{ fontWeight: 'bold', color: THEME.textBlack }}>Localização</Text>
+                            <Text style={{ fontWeight: 'bold', color: THEME.textBlack, fontSize: 14 }}>Localização</Text>
                             <Text style={{ color: THEME.secondaryText, fontSize: 13 }}>
-                                {locationLoading ? 'Buscando...' : location ? `${location.city || 'N/A'}, ${location.region || 'N/A'}` : 'Toque para buscar...'}
+                                {locationLoading
+                                    ? 'Buscando...'
+                                    : location
+                                        ? `${location.city || 'N/A'}, ${location.region || 'N/A'} - ${location.country || 'N/A'}`
+                                        : 'Toque para buscar... (habilite a permissão)'}
                             </Text>
                         </View>
                         {locationLoading && <ActivityIndicator size="small" color={THEME.primary} />}
                     </TouchableOpacity>
+
+                    <View style={{ height: 40 }} />
                 </ScrollView>
             </View>
         </View>
     </Modal>
 );
 
-const AgronomiaChatbot = ({ onClose, location }) => {
+const WelcomeView = React.memo(({ onModeChange }) => (
+    <View style={styles.chatbotWelcomeContainer}>
+        <View style={{ alignItems: 'center', width: '100%' }}>
+            <MaterialCommunityIcons name="robot-happy-outline" size={64} color={THEME.primary} />
+            <Text style={styles.chatbotWelcomeTitle}>Olá! Sou a AgronomIA</Text>
+            <Text style={styles.chatbotWelcomeSubtitle}>Sua assistente W3Labs. Como posso ajudar hoje?</Text>
+        </View>
+        <View style={{width: '100%', marginTop: 32}}>
+            <TouchableOpacity style={styles.chatbotPromptCard} onPress={() => onModeChange(MODES.AI)}>
+                <Text style={styles.chatbotPromptCardText}>Fazer uma pergunta por texto</Text>
+                <Ionicons name="chatbubbles-outline" size={24} color={THEME.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.chatbotPromptCard} onPress={() => onModeChange(MODES.OPTIONS)}>
+                <Text style={styles.chatbotPromptCardText}>Ver ações rápidas e mercado</Text>
+                <Ionicons name="flash-outline" size={24} color={THEME.primary} />
+            </TouchableOpacity>
+        </View>
+    </View>
+));
+
+const OptionsView = React.memo(({ onOptionSelect }) => {
+    const analysisOptions = [
+        { label: 'Cotação Soja',  query: 'Qual a cotação da soja hoje?', icon: 'trending-up-outline' },
+        { label: 'Histórico Chuva', query: 'Relatório do meu histórico de chuva', icon: 'rainy-outline' },
+        { label: 'Estoque', query: 'Análise do meu estoque geral', icon: 'archive-outline' },
+        { label: 'Consumo Diesel', query: 'Análise do consumo de diesel', icon: 'speedometer-outline' },
+    ];
+    
+    return (
+        <ScrollView contentContainerStyle={{ padding: 10 }}>
+            <Text style={styles.formSectionTitle}>Análises Rápidas</Text>
+            <View style={styles.quickOptionsGrid}>
+                {analysisOptions.map(item => (
+                    <TouchableOpacity key={item.label} style={styles.chatbotQuickOption} onPress={() => onOptionSelect(item.query)}>
+                        <Ionicons name={item.icon} size={28} color={THEME.primary} />
+                        <Text style={styles.chatbotQuickOptionText}>{item.label}</Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+        </ScrollView>
+    );
+});
+
+const AgronomiaChatbot = ({ onClose }) => {
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
+    const [activeModel, setActiveModel] = useState(APPROVED_MODELS[0].id);
+    const [attachedFile, setAttachedFile] = useState(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [location, setLocation] = useState(null);
+    const [locationLoading, setLocationLoading] = useState(false);
     const [chatMode, setChatMode] = useState(MODES.WELCOME);
     const flatListRef = useRef(null);
 
+    const requestLocation = useCallback(async () => {
+        setLocationLoading(true);
+        try {
+          let { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== 'granted') {
+              Alert.alert("Permissão negada", "A permissão de localização é necessária.");
+              return;
+          }
+    
+          let currentLocation = await Location.getCurrentPositionAsync({});
+          let geocode = await Location.reverseGeocodeAsync(currentLocation.coords);
+          if (geocode && geocode.length > 0) {
+              setLocation(geocode[0]);
+          }
+        } catch (error) {
+          console.error("GPS Error: ", error);
+          Alert.alert("Erro de Localização", "Não foi possível obter a localização atual.");
+        } finally {
+          setLocationLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        requestLocation();
+    }, [requestLocation]);
+
     const systemPrompt = useMemo(() => `
         Você é a AgronomIA, Especialista Sênior da W3Labs.
-        Localização do Usuário: ${location ? `${location.city}, ${location.region}` : 'Não disponível'}.
-        Use as ferramentas disponíveis para consultar dados do Firebase quando necessário.
-    `, [location]);
-
-    const handleSend = async (manualQuery = null) => {
-        const text = (manualQuery || inputText).trim();
-        if (loading || !text) return;
-
-        if (manualQuery) setChatMode(MODES.AI);
+        Modelo Atual: ${activeModel}.
+        Localização do Usuário: ${location ? `${location.city}, ${location.country}` : 'Não disponível'}.
         
-        const userMsg = { id: Date.now().toString(), role: 'user', sender: 'user', text: text };
-        setMessages(prev => [...prev, userMsg]);
+        Diretrizes:
+        1. Seja breve, técnico e direto (Backend - Eficácia).
+        2. Use as FERRAMENTAS disponíveis para consultar dados.
+        3. Para buscar informações na web (cotações, notícias, clima), use a ferramenta 'web_search'.
+        4. Para aprofundar em um resultado de busca, use 'web_fetch' com a URL.
+        5. Para dados internos da fazenda (estoque, colheitas, etc.), use 'get_farm_data'.
+    `, [activeModel, location]);
+
+    const handleSend = useCallback(async (manualQuery = null) => {
+        const text = (manualQuery || inputText).trim();
+        if (loading || (!text && !attachedFile)) return;
+
+        if (manualQuery) setChatMode(MODES.AI); // Se vier das opções rápidas
+
+        const userMsg = {
+            id: Date.now().toString(),
+            role: 'user',
+            sender: 'user',
+            text: text,
+            images: [],
+            fileData: attachedFile
+        };
+
+        if (attachedFile?.mimeType?.startsWith('image/')) {
+            try {
+                const b64 = await processAttachment(attachedFile.uri);
+                userMsg.images = [b64];
+            } catch (e) {
+                Alert.alert("Erro", "Falha ao processar imagem.");
+                return;
+            }
+        }
+
+        const newHistory = [...messages, userMsg];
+        setMessages(newHistory);
         setInputText('');
+        setAttachedFile(null);
         setLoading(true);
 
         try {
             const botId = Date.now() + '_bot';
-            setMessages(prev => [...prev, { id: botId, role: 'assistant', sender: 'bot', text: '' }]);
+            setMessages(prev => [...prev, {
+                id: botId, role: 'assistant', sender: 'bot', text: '', thinking: ''
+            }]);
 
             let apiMessages = [
                 { role: 'system', content: systemPrompt },
-                ...messages.map(m => ({ role: m.role, content: m.text })),
-                { role: 'user', content: text }
+                ...newHistory.map(m => ({
+                    role: m.role,
+                    content: m.text,
+                    images: m.images?.length ? m.images : undefined,
+                    tool_calls: m.tool_calls // Mantém histórico de chamadas de função
+                }))
             ];
 
-            await ollamaService.chatStream({
-                model: APPROVED_MODELS[0].id,
-                messages: apiMessages,
-                tools: TOOLS_DEFINITION,
-            }, (chunk) => {
-                const msg = chunk.message;
-                if (msg && msg.content) {
-                    setMessages(prev => prev.map(m => m.id === botId ? { ...m, text: m.text + msg.content } : m));
-                }
-            });
+            let keepGenerating = true;
+            let loopCount = 0;
 
+            while (keepGenerating && loopCount < CONFIG.MAX_TOOL_LOOPS) {
+                loopCount++;
+                let currentText = '';
+                let currentThinking = '';
+                let currentToolCalls = [];
+
+                const finalMetrics = await ollamaService.chatStream({
+                    model: activeModel,
+                    messages: apiMessages,
+                    stream: true,
+                    tools: TOOLS_DEFINITION,
+                }, (chunk) => {
+                    const msg = chunk.message;
+                    if (msg.content) currentText += msg.content;
+                    if (msg.thinking) currentThinking += msg.thinking;
+                    if (msg.tool_calls) currentToolCalls.push(...msg.tool_calls);
+
+                    setMessages(prev => prev.map(m =>
+                        m.id === botId
+                        ? { ...m, text: currentText, thinking: currentThinking }
+                        : m
+                    ));
+                });
+
+                if (finalMetrics) {
+                    const usageMetrics = {
+                        duration: (finalMetrics.total_duration / 1e9).toFixed(2),
+                        tokens: `${finalMetrics.prompt_eval_count}/${finalMetrics.eval_count}`
+                    };
+                    setMessages(prev => prev.map(m => m.id === botId ? { ...m, usage: usageMetrics } : m));
+                }
+
+                if (currentToolCalls.length > 0) {
+                    apiMessages.push({
+                        role: 'assistant',
+                        content: currentText,
+                        tool_calls: currentToolCalls
+                    });
+
+                    for (const call of currentToolCalls) {
+                        const fnName = call.function.name;
+                        const fnArgs = call.function.arguments;
+
+                        setMessages(prev => [...prev, {
+                            id: Date.now() + '_sys',
+                            role: 'system',
+                            sender: 'system',
+                            text: `⚙️ Executando: ${fnName}...`
+                        }]);
+
+                        let result = JSON.stringify({ error: "Ferramenta falhou" });
+
+                        if (TOOLS_IMPLEMENTATION[fnName]) {
+                            result = await TOOLS_IMPLEMENTATION[fnName](fnArgs);
+                        }
+
+                        apiMessages.push({
+                            role: 'tool',
+                            content: result,
+                            tool_name: fnName
+                        });
+                    }
+                } else {
+                    keepGenerating = false;
+                }
+            }
         } catch (error) {
-            setMessages(prev => [...prev, { id: Date.now() + '_err', role: 'assistant', sender: 'bot', text: `⚠️ Erro de conexão com a IA.\nVerifique se o Ollama está rodando e a URL está correta.` }]);
+            console.error("Erro AgronomIA:", error);
+            let errorMsg = `⚠️ **Sistema Indisponível**\n${error.message}`;
+            setMessages(prev => [...prev, {
+                id: Date.now() + '_err',
+                role: 'assistant',
+                sender: 'bot',
+                text: errorMsg,
+                isError: true
+            }]);
         } finally {
             setLoading(false);
         }
+    }, [inputText, attachedFile, loading, messages, activeModel, systemPrompt]);
+
+    const pickDocument = async () => {
+        try {
+            const res = await DocumentPicker.getDocumentAsync({
+                type: ['image/*', 'application/pdf', 'text/csv'],
+                copyToCacheDirectory: true
+            });
+            if (!res.canceled && res.assets[0]) {
+                setAttachedFile(res.assets[0]);
+            }
+        } catch (err) {
+            Alert.alert("Erro", "Seleção cancelada.");
+        }
+    };
+
+    const handleClearChat = () => {
+        setMessages([]);
+        setChatMode(MODES.WELCOME);
     };
 
     return (
@@ -275,85 +635,144 @@ const AgronomiaChatbot = ({ onClose, location }) => {
             <View style={styles.chatbotHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     {chatMode !== MODES.WELCOME && (
-                        <TouchableOpacity onPress={() => setChatMode(MODES.WELCOME)} style={{ marginRight: 10 }}>
+                        <TouchableOpacity onPress={() => setChatMode(MODES.WELCOME)} style={[styles.headerButton, { marginRight: 10, backgroundColor: 'transparent' }]}>
                             <Ionicons name="arrow-back" size={24} color={THEME.secondaryText} />
                         </TouchableOpacity>
                     )}
-                    <Text style={styles.chatbotTitle}>AgronomIA</Text>
+                    <View>
+                        <Text style={styles.chatbotTitle}>
+                            AgronomIA
+                        </Text>
+                        <Text style={{ fontSize: 11, color: THEME.textBlack, opacity: 0.7, marginTop: 4 }}>
+                            {location ? `📍 ${location.city}` : 'W3Labs Intelligence'}
+                        </Text>
+                    </View>
                 </View>
                 <View style={{ flexDirection: 'row' }}>
-                    <TouchableOpacity onPress={() => setShowSettings(true)} style={{ marginRight: 15 }}>
+                    <TouchableOpacity onPress={() => setShowSettings(true)} style={[styles.headerButton, { backgroundColor: 'transparent' }]}>
                         <Ionicons name="settings-outline" size={24} color={THEME.secondaryText} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={onClose}>
+                    {messages.length > 0 && chatMode === MODES.AI && (
+                        <TouchableOpacity onPress={handleClearChat} style={[styles.headerButton, { backgroundColor: 'transparent' }]}>
+                            <Ionicons name="trash-outline" size={22} color={THEME.secondaryText} />
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={onClose} style={[styles.headerButton, { backgroundColor: 'transparent' }]}>
                         <Ionicons name="close" size={24} color={THEME.secondaryText} />
                     </TouchableOpacity>
                 </View>
             </View>
 
             {/* TELA DE BOAS VINDAS */}
-            {chatMode === MODES.WELCOME && (
-                <View style={styles.welcomeContainer}>
-                    <MaterialCommunityIcons name="robot-outline" size={80} color={THEME.primary} style={{ marginBottom: 10 }} />
-                    <Text style={styles.welcomeTitle}>Olá! Sou a AgronomIA</Text>
-                    <Text style={styles.welcomeSubtitle}>Sua assistente para o agronegócio. Como posso ajudar hoje?</Text>
-                    
-                    <View style={{ width: '100%', marginTop: 20 }}>
-                        <TouchableOpacity style={styles.promptCard} onPress={() => setChatMode(MODES.AI)}>
-                            <Text style={styles.promptText}>Fazer uma pergunta por texto ou voz</Text>
-                            <Ionicons name="chatbubbles-outline" size={24} color={THEME.primary} />
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity style={styles.promptCard} onPress={() => {}}>
-                            <Text style={styles.promptText}>Ver ações rápidas</Text>
-                            <Ionicons name="flash-outline" size={24} color={THEME.primary} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
+            {chatMode === MODES.WELCOME && <WelcomeView onModeChange={setChatMode} />}
+            {chatMode === MODES.OPTIONS && <OptionsView onOptionSelect={(q) => handleSend(q)} />}
 
             {/* TELA DE CHAT */}
             {chatMode === MODES.AI && (
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <ScrollView contentContainerStyle={{ padding: 15 }} ref={flatListRef} onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}>
-                        {messages.map(item => (
-                            <View key={item.id} style={[styles.messageBubble, item.sender === 'user' ? styles.userMessage : styles.botMessage]}>
-                                <Text style={{ color: item.sender === 'user' ? THEME.textWhite : THEME.textBlack }}>{item.text}</Text>
+                    <FlatList
+                        ref={flatListRef}
+                        data={messages}
+                        keyExtractor={item => item.id}
+                        contentContainerStyle={{ padding: 15, paddingBottom: 20 }}
+                        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                        renderItem={({ item }) => (
+                            <View style={[
+                                styles.messageBubble,
+                                item.sender === 'user' ? styles.userMessage :
+                                item.sender === 'system' ? styles.systemMessage : styles.botMessage
+                            ]}>
+                                {item.fileData && (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, opacity: 0.8 }}>
+                                        <Ionicons name="document-attach" size={16} color={item.sender === 'user' ? THEME.textWhite : THEME.textBlack} />
+                                        <Text style={{ fontSize: 11, marginLeft: 5, color: item.sender === 'user' ? THEME.textWhite : THEME.textBlack }}>
+                                            {item.fileData.name}
+                                        </Text>
+                                    </View>
+                                )}
+                                {item.thinking ? (
+                                    <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 8, borderRadius: 6, marginBottom: 6, borderLeftWidth: 2, borderLeftColor: '#aaa' }}>
+                                        <Text style={{ fontSize: 10, color: THEME.secondaryText, fontStyle: 'italic' }}>🧠 {item.thinking}</Text>
+                                    </View>
+                                ) : null}
+                                <MarkdownDisplay
+                                    style={
+                                        item.sender === 'user'
+                                        ? { body: { color: THEME.textWhite } }
+                                        : item.sender === 'system'
+                                        ? { body: styles.systemMessageText }
+                                        : {}
+                                    }
+                                >
+                                    {item.text}
+                                </MarkdownDisplay>
+                                {item.usage && (
+                                    <Text style={{
+                                        fontSize: 9, color: item.sender === 'user' ? THEME.textWhite : THEME.secondaryText,
+                                        opacity: 0.7, marginTop: 5, textAlign: 'right'
+                                    }}>
+                                        ⚡ {item.usage.duration}s | Tks: {item.usage.tokens}
+                                    </Text>
+                                )}
                             </View>
-                        ))}
-                    </ScrollView>
+                        )}
+                    />
                     <View style={styles.chatInputContainer}>
+                        <TouchableOpacity onPress={pickDocument} style={{ padding: 10 }}>
+                            <Ionicons name="attach" size={24} color={attachedFile ? THEME.primary : THEME.secondaryText} />
+                        </TouchableOpacity>
                         <TextInput
                             style={styles.chatInput}
                             value={inputText}
                             onChangeText={setInputText}
-                            placeholder="Pergunte à AgronomIA..."
+                            placeholder={attachedFile ? "Arquivo pronto. Descreva o que fazer." : "Pergunte à AgronomIA..."}
                             placeholderTextColor={THEME.secondaryText}
                             multiline
+                            editable={!loading}
                         />
-                        <TouchableOpacity onPress={() => handleSend()} disabled={loading} style={styles.sendBtn}>
-                            {loading ? <ActivityIndicator size="small" color={THEME.textWhite} /> : <Ionicons name="send" size={18} color={THEME.textWhite} />}
-                        </TouchableOpacity>
+                        {(inputText.trim().length > 0 || attachedFile) && (
+                            <TouchableOpacity
+                                onPress={() => handleSend()}
+                                disabled={loading}
+                                style={[styles.chatbotSendButton, loading && { opacity: 0.6 }]}
+                            >
+                                {loading ? <ActivityIndicator size="small" color={THEME.textWhite} /> : <Ionicons name="send" size={20} color={THEME.textWhite} />}
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </KeyboardAvoidingView>
             )}
 
-            <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} location={location} />
+            <SettingsModal
+                visible={showSettings}
+                onClose={() => setShowSettings(false)}
+                currentModel={activeModel}
+                location={location}
+                locationLoading={locationLoading}
+                onRequestLocation={requestLocation}
+                onSelectModel={(m) => { setActiveModel(m); setShowSettings(false); }}
+            />
         </View>
     );
 };
+
+const ChatbotFAB = ({ onPress }) => (
+    <TouchableOpacity style={styles.chatbotFab} onPress={onPress} activeOpacity={0.8}>
+        <MaterialCommunityIcons name="robot-outline" size={28} color={THEME.textWhite} />
+    </TouchableOpacity>
+);
 
 // =====================================================================
 // 4️⃣ TELA PRINCIPAL (DASHBOARD.JSX)
 // =====================================================================
 
-export default function Dashboard() {
+export default function Dashboard({ navigation }) {
     const [weather, setWeather] = useState({
         temp: '--', desc: 'Buscando clima...', humidity: '--', wind: '--', rain: '--'
     });
     const [location, setLocation] = useState(null);
     const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-    const userName = auth.currentUser?.displayName || "Willyan"; // Simula o nome vindo do Firebase
+    const userName = auth.currentUser?.displayName || "Usuário"; // Simula o nome vindo do Firebase
 
     // Função para realizar o logout do usuário
     const handleLogout = async () => {
@@ -404,16 +823,16 @@ export default function Dashboard() {
 
     // Array dos Botões do Menu na Ordem Exata
     const gridItems = [
-        { id: 1, title: 'PULVERIZAÇÃO', icon: 'spray-can', lib: FontAwesome5 },
-        { id: 2, title: 'PLANTIO', icon: 'seedling', lib: FontAwesome5 },
-        { id: 3, title: 'COLHEITA', icon: 'tractor', lib: FontAwesome5 },
-        { id: 4, title: 'REVISÕES', icon: 'wrench', lib: FontAwesome5 },
-        { id: 5, title: 'DIESEL', icon: 'gas-pump', lib: FontAwesome5 },
-        { id: 6, title: 'ESTOQUE', icon: 'warehouse', lib: FontAwesome5 },
-        { id: 7, title: 'PLUVIÔMETRO', icon: 'cloud-rain', lib: FontAwesome5 },
-        { id: 8, title: '% ANDAMENTO', icon: 'percentage', lib: FontAwesome5 },
-        { id: 9, title: 'GERENCIADOR', icon: 'cogs', lib: FontAwesome5 },
-        { id: 10, title: 'MANUAIS', icon: 'book-open', lib: FontAwesome5 },
+        { id: 1, title: 'PULVERIZAÇÃO', icon: 'spray-can', lib: FontAwesome5, screen: 'Pulverizacao' },
+        { id: 2, title: 'PLANTIO', icon: 'seedling', lib: FontAwesome5, screen: 'Plantios' },
+        { id: 3, title: 'COLHEITA', icon: 'tractor', lib: FontAwesome5, screen: 'Colheitas' },
+        { id: 4, title: 'REVISÕES', icon: 'wrench', lib: FontAwesome5, screen: 'Revisoes' },
+        { id: 5, title: 'DIESEL', icon: 'gas-pump', lib: FontAwesome5, screen: 'Diesel' },
+        { id: 6, title: 'ESTOQUE', icon: 'warehouse', lib: FontAwesome5, screen: 'Manager', params: { initialView: 'estoque' } },
+        { id: 7, title: 'PLUVIÔMETRO', icon: 'cloud-rain', lib: FontAwesome5, screen: 'Pluviometro' },
+        { id: 8, title: '% ANDAMENTO', icon: 'percentage', lib: FontAwesome5, screen: 'Andamento' },
+        { id: 9, title: 'GERENCIADOR', icon: 'cogs', lib: FontAwesome5, screen: 'Manager' },
+        { id: 10, title: 'MANUAIS', icon: 'book-open', lib: FontAwesome5, screen: 'Manuais' },
     ];
 
     // Lógica para estruturar exatamente o layout 3x3x3x1
@@ -470,7 +889,11 @@ export default function Dashboard() {
                     {gridRows.map((row, rowIndex) => (
                         <View key={rowIndex} style={styles.gridRow}>
                             {row.map((item) => (
-                                <TouchableOpacity key={item.id} style={styles.gridButton}>
+                                <TouchableOpacity 
+                                    key={item.id} 
+                                    style={styles.gridButton}
+                                    onPress={() => item.screen ? navigation.navigate(item.screen, item.params) : alert('Tela não implementada.')}
+                                >
                                     <item.lib 
                                         name={item.icon} 
                                         size={28} 
@@ -487,15 +910,13 @@ export default function Dashboard() {
 
             {/* FAB DO CHATBOT */}
             {!isChatbotOpen && (
-                <TouchableOpacity style={styles.fab} onPress={() => setIsChatbotOpen(true)}>
-                    <MaterialCommunityIcons name="robot" size={32} color={THEME.textWhite} />
-                </TouchableOpacity>
+                <ChatbotFAB onPress={() => setIsChatbotOpen(true)} />
             )}
 
             {/* MODAL DO CHATBOT */}
             <Modal visible={isChatbotOpen} animationType="slide" transparent>
                 <View style={styles.modalOverlayChatbot}>
-                    <AgronomiaChatbot onClose={() => setIsChatbotOpen(false)} location={location} />
+                    <AgronomiaChatbot onClose={() => setIsChatbotOpen(false)} />
                 </View>
             </Modal>
         </SafeAreaView>
@@ -584,7 +1005,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         width: '100%',
     },
-    //gridButton responsivo
     gridButton: {
         backgroundColor: THEME.primaryDark,
         width: Platform.OS === 'web' ? 150 : (width - 80) / 3,
@@ -600,13 +1020,6 @@ const styles = StyleSheet.create({
         margin: 10,
         overflow: 'hidden',
     },
-    gridButtonTitle: {
-        color: THEME.textWhite,
-        fontSize: 12,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        paddingHorizontal: 5,
-    },
     gridButtonText: {
         color: THEME.textWhite,
         fontSize: Platform.OS === 'web' ? 14 : 10,
@@ -616,7 +1029,7 @@ const styles = StyleSheet.create({
     },
     
     // --- FAB ---
-    fab: {
+    chatbotFab: {
         position: 'absolute',
         right: 25,
         bottom: 30,
@@ -648,7 +1061,7 @@ const styles = StyleSheet.create({
         height: '85%',
         maxHeight: 650,
         width: '100%',
-        maxWidth: 400,  // Define uma largura máxima
+        maxWidth: 400,  
         borderRadius: 15,
         overflow: 'hidden',
         shadowColor: '#000',
@@ -665,45 +1078,75 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderColor: '#EAEAEA',
     },
+    headerButton: {
+        padding: 5,
+    },
     chatbotTitle: {
         color: THEME.primary,
         fontWeight: 'bold',
         fontSize: 18,
     },
-    welcomeContainer: {
+    chatbotWelcomeContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 30,
     },
-    welcomeTitle: {
+    chatbotWelcomeTitle: {
         fontSize: 22,
         fontWeight: 'bold',
         color: THEME.textBlack,
-        marginTop: 10,
+        marginTop: 15,
     },
-    welcomeSubtitle: {
+    chatbotWelcomeSubtitle: {
         fontSize: 14,
         color: THEME.secondaryText,
         textAlign: 'center',
         marginTop: 5,
-        marginBottom: 30,
     },
-    promptCard: {
+    chatbotPromptCard: {
         flexDirection: 'row',
         backgroundColor: THEME.grayButton,
         padding: 18,
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'space-between',
-        width: '100%',
         marginBottom: 12,
     },
-    promptText: {
+    chatbotPromptCardText: {
         fontSize: 14,
         color: THEME.textBlack,
         flex: 1,
     },
+    
+    formSectionTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: THEME.textBlack,
+        marginBottom: 15,
+        marginTop: 10,
+    },
+    quickOptionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+    },
+    chatbotQuickOption: {
+        width: '48%',
+        backgroundColor: THEME.grayButton,
+        padding: 15,
+        borderRadius: 15,
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    chatbotQuickOptionText: {
+        fontSize: 12,
+        color: THEME.textBlack,
+        textAlign: 'center',
+        marginTop: 8,
+        fontWeight: '600',
+    },
+    
     messageBubble: {
         padding: 15,
         borderRadius: 15,
@@ -719,6 +1162,17 @@ const styles = StyleSheet.create({
         backgroundColor: THEME.grayButton,
         alignSelf: 'flex-start',
         borderBottomLeftRadius: 5,
+    },
+    systemMessage: {
+        backgroundColor: 'transparent',
+        alignSelf: 'center',
+        padding: 5,
+    },
+    systemMessageText: {
+        color: THEME.secondaryText,
+        fontSize: 12,
+        fontStyle: 'italic',
+        textAlign: 'center'
     },
     chatInputContainer: {
         flexDirection: 'row',
@@ -739,7 +1193,7 @@ const styles = StyleSheet.create({
         minHeight: 40,
         color: THEME.textBlack,
     },
-    sendBtn: {
+    chatbotSendButton: {
         backgroundColor: THEME.primary,
         width: 44,
         height: 44,
@@ -780,11 +1234,44 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginBottom: 15,
     },
-    locationBtn: {
-        backgroundColor: THEME.grayButton,
+    modelOptionCard: {
         padding: 15,
+        backgroundColor: '#fff',
         borderRadius: 10,
+        marginBottom: 10,
         flexDirection: 'row',
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#eee'
     },
+    modelOptionCardActive: {
+        borderColor: THEME.primary,
+        backgroundColor: '#f0fdf4'
+    },
+    modelName: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        color: THEME.textBlack
+    },
+    modelDesc: {
+        fontSize: 12,
+        color: THEME.secondaryText,
+        marginTop: 4
+    },
+    radioButtonOuter: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#ccc',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 10
+    },
+    radioButtonInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: THEME.primary
+    }
 });

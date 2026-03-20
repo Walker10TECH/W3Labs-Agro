@@ -7,6 +7,13 @@ import { auth } from './firebaseConfig';
 // Importação das Telas
 import Login from './Telas/Login';
 import Dashboard from './Telas/Dashboard';
+import { PlantiosScreen, ColheitasScreen } from './Telas/Plantio&Colheita';
+import Manager from './Telas/Manager';
+import PulverizacaoScreen from './Telas/Pulverizacao';
+import DieselScreen from './Telas/Diesel';
+import Manuais from './Telas/Manuais';
+import { PorcentagemListaScreen, PluviometroListaScreen } from './Telas/Porcentage&Pluviometro';
+import RevisoesListaScreen from './Telas/Revisoes';
 
 const Stack = createNativeStackNavigator();
 
@@ -29,8 +36,19 @@ export default function W3LabsAgro() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          // Telas para usuários autenticados
-          <Stack.Screen name="Dashboard" component={Dashboard} />
+          <>
+            {/* Telas para usuários autenticados */}
+            <Stack.Screen name="Dashboard" component={Dashboard} />
+            <Stack.Screen name="Plantios" component={PlantiosScreen} />
+            <Stack.Screen name="Colheitas" component={ColheitasScreen} />
+            <Stack.Screen name="Manager" component={Manager} />
+            <Stack.Screen name="Pulverizacao" component={PulverizacaoScreen} />
+            <Stack.Screen name="Diesel" component={DieselScreen} />
+            <Stack.Screen name="Manuais" component={Manuais} />
+            <Stack.Screen name="Andamento" component={PorcentagemListaScreen} />
+            <Stack.Screen name="Pluviometro" component={PluviometroListaScreen} />
+            <Stack.Screen name="Revisoes" component={RevisoesListaScreen} />
+          </>
         ) : (
           // Telas para usuários não autenticados
           <Stack.Screen name="Login" component={Login} />
