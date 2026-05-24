@@ -19,7 +19,8 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    useWindowDimensions
 } from 'react-native';
 
 // Módulos Expo e Vector Icons
@@ -30,10 +31,9 @@ import * as Location from 'expo-location';
 
 // Firebase
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { auth, db, signOut } from '../firebaseConfig'; // Certifique-se de que este caminho está correto
+import { auth, db, signOut } from '../firebaseConfig'; // Certifique-se de que o caminho está correto
 
 // Bibliotecas de IA
-import { Ollama } from "ollama";
 import MarkdownDisplay from 'react-native-markdown-display';
 
 // =====================================================================
@@ -41,21 +41,19 @@ import MarkdownDisplay from 'react-native-markdown-display';
 // =====================================================================
 
 const CONFIG = {
-    OLLAMA_HOST: 'http://127.0.0.1:11434',
-    OLLAMA_API_KEY: process.env.EXPO_PUBLIC_OLLAMA_API_KEY || '',
+    GROQ_API_KEY: process.env.EXPO_PUBLIC_GROQ_API_KEY || '',
     WEATHER_API_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
-    // Configurações Gerais
     MAX_TOOL_LOOPS: 5,
 };
 
 const THEME = {
-    primary: '#6DB33F',       // Verde vibrante principal
-    primaryDark: '#5A9634',   // Verde dos botões (ligeiramente mais fechado)
+    primary: '#4CAF50',
+    primaryDark: '#388E3C',
     secondary: '#FFFFFF',     // Branco
-    background: '#F4F6F4',    // Fundo cinza claro
+    background: '#F9FBF9',    // Fundo cinza claro
     textBlack: '#2C3329',     // Texto escuro
     textWhite: '#FFFFFF',     // Texto branco
-    secondaryText: '#7A8078', // Cinza para subtítulos
+    secondaryText: '#4A4A4A', // Cinza para subtítulos
     grayButton: '#F0F2F0',    // Fundo dos botões do chatbot
 };
 
@@ -65,138 +63,63 @@ const MODES = {
     AI: 'ai',
 };
 
+// Modelos do Groq atualizados
 const APPROVED_MODELS = [
     {
-        id: 'gpt-oss:20b-cloud',
-        name: 'W3Labs 20B (Local)',
-        desc: 'Execução local via Ollama. Gratuito e Privado.',
-        provider: 'ollama'
-    }
+        id: 'openai/gpt-oss-120b',
+        name: 'W3Labs Web Search (Compound)',
+        desc: 'Acesso à internet em tempo real via Groq. Respostas mais completas.',
+        provider: 'groq'
+    },
 ];
 
-const { width } = Dimensions.get('window');
-
 // =====================================================================
-// 2️⃣ CAMADA DE SERVIÇO DE IA (OLLAMA E TOOLS)
+// 2️⃣ CAMADA DE SERVIÇO DE IA (GROQ CLOUD E TOOLS)
 // =====================================================================
 
-/**
- * Busca resultados na web usando a API da Ollama.
- * @param {string} query - A string de busca.
- * @returns {Promise<string>} - JSON stringificado com os resultados ou erro.
- */
-async function fetchWebSearchResults(query) {
-    if (!CONFIG.OLLAMA_API_KEY) {
-        return JSON.stringify({ error: "A chave da API (OLLAMA_API_KEY) não está configurada." });
+
+class GroqService {
+    constructor(apiKey) {
+        this.apiKey = apiKey;
+        this.baseURL = 'https://api.groq.com/openai/v1/chat/completions';
     }
 
-    try {
-        const response = await fetch('https://ollama.com/api/web_search', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${CONFIG.OLLAMA_API_KEY}`,
-            },
-            body: JSON.stringify({ query: query, max_results: 5 }),
-        });
-
-        if (!response.ok) {
-            const errorBody = await response.text();
-            throw new Error(`API de busca retornou ${response.status}: ${errorBody}`);
+    async chat(payload) {
+        if (!this.apiKey) {
+            throw new Error("Chave da API do Groq (GROQ_API_KEY) não está configurada.");
         }
 
-        const data = await response.json();
-        return JSON.stringify(data.results || []);
-    } catch (error) {
-        console.error("Erro na busca web:", error);
-        return JSON.stringify({ error: `Falha na busca web: ${error.message}` });
-    }
-}
-
-async function fetchWebPage(url) {
-    if (!CONFIG.OLLAMA_API_KEY) {
-        return JSON.stringify({ error: "A chave da API (OLLAMA_API_KEY) não está configurada." });
-    }
-
-    try {
-        const response = await fetch('https://ollama.com/api/web_fetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CONFIG.OLLAMA_API_KEY}` },
-            body: JSON.stringify({ url: url }),
-        });
-
-        if (!response.ok) throw new Error(`API de fetch retornou ${response.status}`);
-        const data = await response.json();
-        return `Título: ${data.title}\n\nConteúdo: ${data.content}`.substring(0, 8000);
-    } catch (error) {
-        console.error("Erro no fetch da web:", error);
-        return JSON.stringify({ error: `Falha ao buscar URL: ${error.message}` });
-    }
-}
-
-class OllamaService {
-    constructor(host, apiKey) {
-        const config = { host };
-        if (apiKey) {
-            config.headers = { Authorization: `Bearer ${apiKey}` };
-        }
-        this.client = new Ollama(config);
-    }
-
-    async chatStream(payload, onChunk) {
-        try { 
-            const response = await this.client.chat({
-                ...payload,
-                stream: true,
+        try {
+            const response = await fetch(this.baseURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify(payload)
             });
 
-            let finalMetrics = null;
-            for await (const part of response) {
-                onChunk({
-                    message: part.message,
-                    done: part.done,
-                    total_duration: part.total_duration,
-                    eval_count: part.eval_count,
-                    prompt_eval_count: part.prompt_eval_count
-                });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error?.message || `Erro ${response.status}: Falha ao contatar GroqCloud`);
+            }
 
-                if (part.done) {
-                    finalMetrics = {
-                        total_duration: part.total_duration,
-                        eval_count: part.eval_count,
-                        prompt_eval_count: part.prompt_eval_count
-                    };
-                }
-            }
-            return finalMetrics;
+            return await response.json();
         } catch (error) {
-            console.error('Ollama Service Error:', error);
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error(
-                    "Falha de Conexão (CORS/Network).\n" +
-                    "1. Verifique se o Ollama está rodando.\n" +
-                    "2. Se estiver na Web, inicie o Ollama com: OLLAMA_ORIGINS=\"*\" ollama serve"
-                );
-            }
-            if (error.message && error.message.includes('401')) {
-                throw new Error("Erro 401: Não autorizado. Verifique sua API KEY.");
-            }
-            if (error.status === 404) {
-                 throw new Error(`Modelo '${payload.model}' não encontrado. Execute 'ollama pull ${payload.model}' no terminal.`);
-            }
+            console.error('Groq Service Error:', error);
             throw error;
         }
     }
 }
 
-const ollamaService = new OllamaService(CONFIG.OLLAMA_HOST, CONFIG.OLLAMA_API_KEY);
+const groqService = new GroqService(CONFIG.GROQ_API_KEY);
 
 const TOOLS_DEFINITION = [
     {
         type: 'function',
         function: {
             name: 'get_farm_data',
-            description: 'Busca registros técnicos internos da fazenda (banco de dados).',
+            description: 'Busca registros técnicos internos da fazenda no banco de dados (Firebase).',
             parameters: {
                 type: 'object',
                 required: ['topic'],
@@ -205,40 +128,6 @@ const TOOLS_DEFINITION = [
                         type: 'string',
                         description: 'Setor para consulta.',
                         enum: ['colheitas', 'diesel', 'plantios', 'pulverizacoes', 'pluviometro', 'estoqueGeral', 'inventario', 'revisoes']
-                    },
-                },
-            },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'web_search',
-            description: 'Busca informações na web. Use para cotações, notícias, e informações gerais.',
-            parameters: {
-                type: 'object',
-                required: ['query'],
-                properties: {
-                    query: {
-                        type: 'string',
-                        description: 'O que pesquisar (ex: "preço soja paraná", "clima para amanhã").',
-                    },
-                },
-            },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'web_fetch',
-            description: 'Obtém o conteúdo completo de uma página da web a partir de uma URL específica. Use após uma busca para aprofundar em um resultado.',
-            parameters: {
-                type: 'object',
-                required: ['url'],
-                properties: {
-                    url: {
-                        type: 'string',
-                        description: 'A URL completa da página a ser buscada.',
                     },
                 },
             },
@@ -257,7 +146,7 @@ const TOOLS_IMPLEMENTATION = {
             plantios: { orderBy: 'dataPlantio' },
             pulverizacoes: { orderBy: 'dataAplicacao' },
             pluviometro: { orderBy: 'dataMedicao' },
-            estoqueGeral: { orderBy: null }, 
+            estoqueGeral: { orderBy: null },
             inventario: { orderBy: 'dataAquisicao' },
             revisoes: { orderBy: 'dataRevisao' },
         };
@@ -267,8 +156,8 @@ const TOOLS_IMPLEMENTATION = {
         try {
             const config = schemaMap[topic];
             const colRef = collection(db, 'users', userUid, topic);
-            
-            let q = config.orderBy 
+
+            let q = config.orderBy
                 ? query(colRef, orderBy(config.orderBy, 'desc'), limit(5))
                 : query(colRef, limit(5));
 
@@ -293,16 +182,11 @@ const TOOLS_IMPLEMENTATION = {
             return JSON.stringify({ error: `Erro DB: ${e.message}` });
         }
     },
-    web_search: async ({ query }) => {
-        return await fetchWebSearchResults(query);
-    },
-    web_fetch: async ({ url }) => {
-        return await fetchWebPage(url);
-    },
 };
 
 async function processAttachment(uri) {
     try {
+        // Para envio de imagens ao LLM (se o modelo do Groq suportar visão, ex: Llama 3.2 Vision)
         return await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
         });
@@ -327,7 +211,7 @@ const SettingsModal = ({ visible, onClose, currentModel, onSelectModel, location
                 </View>
                 <ScrollView contentContainerStyle={{ padding: 20 }}>
                     <Text style={{ fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 15 }}>
-                        Motor de Inferência
+                        Motor de Inferência (Groq)
                     </Text>
                     {APPROVED_MODELS.map((model) => (
                         <TouchableOpacity
@@ -377,7 +261,6 @@ const SettingsModal = ({ visible, onClose, currentModel, onSelectModel, location
                         </View>
                         {locationLoading && <ActivityIndicator size="small" color={THEME.primary} />}
                     </TouchableOpacity>
-
                     <View style={{ height: 40 }} />
                 </ScrollView>
             </View>
@@ -390,9 +273,9 @@ const WelcomeView = React.memo(({ onModeChange }) => (
         <View style={{ alignItems: 'center', width: '100%' }}>
             <MaterialCommunityIcons name="robot-happy-outline" size={64} color={THEME.primary} />
             <Text style={styles.chatbotWelcomeTitle}>Olá! Sou a AgronomIA</Text>
-            <Text style={styles.chatbotWelcomeSubtitle}>Sua assistente W3Labs. Como posso ajudar hoje?</Text>
+            <Text style={styles.chatbotWelcomeSubtitle}>Sua assistente W3Labs (Powered by Groq).</Text>
         </View>
-        <View style={{width: '100%', marginTop: 32}}>
+        <View style={{ width: '100%', marginTop: 32 }}>
             <TouchableOpacity style={styles.chatbotPromptCard} onPress={() => onModeChange(MODES.AI)}>
                 <Text style={styles.chatbotPromptCardText}>Fazer uma pergunta por texto</Text>
                 <Ionicons name="chatbubbles-outline" size={24} color={THEME.primary} />
@@ -407,12 +290,12 @@ const WelcomeView = React.memo(({ onModeChange }) => (
 
 const OptionsView = React.memo(({ onOptionSelect }) => {
     const analysisOptions = [
-        { label: 'Cotação Soja',  query: 'Qual a cotação da soja hoje?', icon: 'trending-up-outline' },
+        { label: 'Cotação Soja', query: 'Qual a cotação da soja hoje?', icon: 'trending-up-outline' },
         { label: 'Histórico Chuva', query: 'Relatório do meu histórico de chuva', icon: 'rainy-outline' },
         { label: 'Estoque', query: 'Análise do meu estoque geral', icon: 'archive-outline' },
         { label: 'Consumo Diesel', query: 'Análise do consumo de diesel', icon: 'speedometer-outline' },
     ];
-    
+
     return (
         <ScrollView contentContainerStyle={{ padding: 10 }}>
             <Text style={styles.formSectionTitle}>Análises Rápidas</Text>
@@ -443,22 +326,21 @@ const AgronomiaChatbot = ({ onClose }) => {
     const requestLocation = useCallback(async () => {
         setLocationLoading(true);
         try {
-          let { status } = await Location.requestForegroundPermissionsAsync();
-          if (status !== 'granted') {
-              Alert.alert("Permissão negada", "A permissão de localização é necessária.");
-              return;
-          }
-    
-          let currentLocation = await Location.getCurrentPositionAsync({});
-          let geocode = await Location.reverseGeocodeAsync(currentLocation.coords);
-          if (geocode && geocode.length > 0) {
-              setLocation(geocode[0]);
-          }
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert("Permissão negada", "A permissão de localização é necessária.");
+                return;
+            }
+
+            let currentLocation = await Location.getCurrentPositionAsync({});
+            let geocode = await Location.reverseGeocodeAsync(currentLocation.coords);
+            if (geocode && geocode.length > 0) {
+                setLocation(geocode[0]);
+            }
         } catch (error) {
-          console.error("GPS Error: ", error);
-          Alert.alert("Erro de Localização", "Não foi possível obter a localização atual.");
+            console.error("GPS Error: ", error);
         } finally {
-          setLocationLoading(false);
+            setLocationLoading(false);
         }
     }, []);
 
@@ -468,41 +350,27 @@ const AgronomiaChatbot = ({ onClose }) => {
 
     const systemPrompt = useMemo(() => `
         Você é a AgronomIA, Especialista Sênior da W3Labs.
-        Modelo Atual: ${activeModel}.
         Localização do Usuário: ${location ? `${location.city}, ${location.country}` : 'Não disponível'}.
         
         Diretrizes:
-        1. Seja breve, técnico e direto (Backend - Eficácia).
-        2. Use as FERRAMENTAS disponíveis para consultar dados.
-        3. Para buscar informações na web (cotações, notícias, clima), use a ferramenta 'web_search'.
-        4. Para aprofundar em um resultado de busca, use 'web_fetch' com a URL.
-        5. Para dados internos da fazenda (estoque, colheitas, etc.), use 'get_farm_data'.
-    `, [activeModel, location]);
+        1. Seja breve, técnico e direto.
+        2. Use as FERRAMENTAS disponíveis para consultar dados da conta do usuário.
+        3. Formate suas respostas usando Markdown limpo.
+    `, [location]);
 
     const handleSend = useCallback(async (manualQuery = null) => {
         const text = (manualQuery || inputText).trim();
         if (loading || (!text && !attachedFile)) return;
 
-        if (manualQuery) setChatMode(MODES.AI); // Se vier das opções rápidas
+        if (manualQuery) setChatMode(MODES.AI);
 
         const userMsg = {
             id: Date.now().toString(),
             role: 'user',
             sender: 'user',
             text: text,
-            images: [],
             fileData: attachedFile
         };
-
-        if (attachedFile?.mimeType?.startsWith('image/')) {
-            try {
-                const b64 = await processAttachment(attachedFile.uri);
-                userMsg.images = [b64];
-            } catch (e) {
-                Alert.alert("Erro", "Falha ao processar imagem.");
-                return;
-            }
-        }
 
         const newHistory = [...messages, userMsg];
         setMessages(newHistory);
@@ -513,96 +381,102 @@ const AgronomiaChatbot = ({ onClose }) => {
         try {
             const botId = Date.now() + '_bot';
             setMessages(prev => [...prev, {
-                id: botId, role: 'assistant', sender: 'bot', text: '', thinking: ''
+                id: botId, role: 'assistant', sender: 'bot', text: ''
             }]);
 
+            // Formata o histórico para o padrão OpenAI/Groq
             let apiMessages = [
                 { role: 'system', content: systemPrompt },
                 ...newHistory.map(m => ({
                     role: m.role,
                     content: m.text,
-                    images: m.images?.length ? m.images : undefined,
-                    tool_calls: m.tool_calls // Mantém histórico de chamadas de função
+                    ...(m.tool_calls && { tool_calls: m.tool_calls }),
+                    ...(m.tool_call_id && { tool_call_id: m.tool_call_id, name: m.name })
                 }))
             ];
 
             let keepGenerating = true;
             let loopCount = 0;
+            let currentText = '';
 
+            // Loop de execução de ferramentas via Groq
             while (keepGenerating && loopCount < CONFIG.MAX_TOOL_LOOPS) {
                 loopCount++;
-                let currentText = '';
-                let currentThinking = '';
-                let currentToolCalls = [];
 
-                const finalMetrics = await ollamaService.chatStream({
+                const response = await groqService.chat({
                     model: activeModel,
                     messages: apiMessages,
-                    stream: true,
                     tools: TOOLS_DEFINITION,
-                }, (chunk) => {
-                    const msg = chunk.message;
-                    if (msg.content) currentText += msg.content;
-                    if (msg.thinking) currentThinking += msg.thinking;
-                    if (msg.tool_calls) currentToolCalls.push(...msg.tool_calls);
-
-                    setMessages(prev => prev.map(m =>
-                        m.id === botId
-                        ? { ...m, text: currentText, thinking: currentThinking }
-                        : m
-                    ));
+                    tool_choice: 'auto',
+                    temperature: 0.3
                 });
 
-                if (finalMetrics) {
-                    const usageMetrics = {
-                        duration: (finalMetrics.total_duration / 1e9).toFixed(2),
-                        tokens: `${finalMetrics.prompt_eval_count}/${finalMetrics.eval_count}`
-                    };
-                    setMessages(prev => prev.map(m => m.id === botId ? { ...m, usage: usageMetrics } : m));
+                const choice = response.choices[0];
+                const msg = choice.message;
+
+                if (msg.executed_tools && msg.executed_tools.length > 0) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + '_sys_web_' + Math.random(),
+                        role: 'system',
+                        sender: 'system',
+                        text: `🌐 Fontes consultadas na web com sucesso.`
+                    }]);
                 }
 
-                if (currentToolCalls.length > 0) {
-                    apiMessages.push({
-                        role: 'assistant',
-                        content: currentText,
-                        tool_calls: currentToolCalls
-                    });
+                if (msg.content) {
+                    currentText += msg.content;
+                    setMessages(prev => prev.map(m =>
+                        m.id === botId ? {
+                            ...m,
+                            text: currentText,
+                            usage: {
+                                duration: response.usage.total_time?.toFixed(2) || 0,
+                                tokens: response.usage.total_tokens
+                            }
+                        } : m
+                    ));
+                }
 
-                    for (const call of currentToolCalls) {
+                if (msg.tool_calls && msg.tool_calls.length > 0) {
+                    // Adiciona a mensagem do assistente com a chamada de função no histórico da API
+                    apiMessages.push(msg);
+
+                    for (const call of msg.tool_calls) {
                         const fnName = call.function.name;
-                        const fnArgs = call.function.arguments;
+                        const fnArgs = JSON.parse(call.function.arguments);
 
                         setMessages(prev => [...prev, {
-                            id: Date.now() + '_sys',
+                            id: Date.now() + '_sys_' + Math.random(),
                             role: 'system',
                             sender: 'system',
-                            text: `⚙️ Executando: ${fnName}...`
+                            text: `⚙️ Consultando: ${fnName}...`
                         }]);
 
-                        let result = JSON.stringify({ error: "Ferramenta falhou" });
+                        let result = JSON.stringify({ error: "Ferramenta falhou ou não implementada" });
 
                         if (TOOLS_IMPLEMENTATION[fnName]) {
                             result = await TOOLS_IMPLEMENTATION[fnName](fnArgs);
                         }
 
+                        // Retorna o resultado da ferramenta para o Groq
                         apiMessages.push({
                             role: 'tool',
-                            content: result,
-                            tool_name: fnName
+                            tool_call_id: call.id,
+                            name: fnName,
+                            content: result
                         });
                     }
                 } else {
-                    keepGenerating = false;
+                    keepGenerating = false; // Finaliza o loop se não houver mais chamadas de ferramentas
                 }
             }
         } catch (error) {
             console.error("Erro AgronomIA:", error);
-            let errorMsg = `⚠️ **Sistema Indisponível**\n${error.message}`;
             setMessages(prev => [...prev, {
                 id: Date.now() + '_err',
                 role: 'assistant',
                 sender: 'bot',
-                text: errorMsg,
+                text: `⚠️ **Erro de Comunicação**\nNão foi possível processar via GroqCloud.\n${error.message}`,
                 isError: true
             }]);
         } finally {
@@ -640,11 +514,9 @@ const AgronomiaChatbot = ({ onClose }) => {
                         </TouchableOpacity>
                     )}
                     <View>
-                        <Text style={styles.chatbotTitle}>
-                            AgronomIA
-                        </Text>
+                        <Text style={styles.chatbotTitle}>AgronomIA</Text>
                         <Text style={{ fontSize: 11, color: THEME.textBlack, opacity: 0.7, marginTop: 4 }}>
-                            {location ? `📍 ${location.city}` : 'W3Labs Intelligence'}
+                            {location ? `📍 ${location.city}` : 'W3Labs / Groq Engine'}
                         </Text>
                     </View>
                 </View>
@@ -680,7 +552,7 @@ const AgronomiaChatbot = ({ onClose }) => {
                             <View style={[
                                 styles.messageBubble,
                                 item.sender === 'user' ? styles.userMessage :
-                                item.sender === 'system' ? styles.systemMessage : styles.botMessage
+                                    item.sender === 'system' ? styles.systemMessage : styles.botMessage
                             ]}>
                                 {item.fileData && (
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, opacity: 0.8 }}>
@@ -690,21 +562,16 @@ const AgronomiaChatbot = ({ onClose }) => {
                                         </Text>
                                     </View>
                                 )}
-                                {item.thinking ? (
-                                    <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 8, borderRadius: 6, marginBottom: 6, borderLeftWidth: 2, borderLeftColor: '#aaa' }}>
-                                        <Text style={{ fontSize: 10, color: THEME.secondaryText, fontStyle: 'italic' }}>🧠 {item.thinking}</Text>
-                                    </View>
-                                ) : null}
                                 <MarkdownDisplay
                                     style={
                                         item.sender === 'user'
-                                        ? { body: { color: THEME.textWhite } }
-                                        : item.sender === 'system'
-                                        ? { body: styles.systemMessageText }
-                                        : {}
+                                            ? { body: { color: THEME.textWhite } }
+                                            : item.sender === 'system'
+                                                ? { body: styles.systemMessageText }
+                                                : {}
                                     }
                                 >
-                                    {item.text}
+                                    {item.text || " "}
                                 </MarkdownDisplay>
                                 {item.usage && (
                                     <Text style={{
@@ -725,7 +592,7 @@ const AgronomiaChatbot = ({ onClose }) => {
                             style={styles.chatInput}
                             value={inputText}
                             onChangeText={setInputText}
-                            placeholder={attachedFile ? "Arquivo pronto. Descreva o que fazer." : "Pergunte à AgronomIA..."}
+                            placeholder={attachedFile ? "Arquivo pronto. O que fazer?" : "Pergunte à AgronomIA..."}
                             placeholderTextColor={THEME.secondaryText}
                             multiline
                             editable={!loading}
@@ -763,36 +630,36 @@ const ChatbotFAB = ({ onPress }) => (
 );
 
 // =====================================================================
-// 4️⃣ TELA PRINCIPAL (DASHBOARD.JSX)
+// 4️⃣ TELA PRINCIPAL (DASHBOARD)
 // =====================================================================
 
 export default function Dashboard({ navigation }) {
+    const { width } = useWindowDimensions();
+    // Calcula a largura exata para caberem 3 itens na tela, subtraindo paddings e margins (50px no total)
+    const buttonWidth = Platform.OS === 'web' ? 160 : Math.floor((width - 50) / 3);
     const [weather, setWeather] = useState({
         temp: '--', desc: 'Buscando clima...', humidity: '--', wind: '--', rain: '--'
     });
     const [location, setLocation] = useState(null);
     const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-    const userName = auth.currentUser?.displayName || "Usuário"; // Simula o nome vindo do Firebase
+    const userName = auth.currentUser?.displayName || "Usuário";
 
-    // Função para realizar o logout do usuário
     const handleLogout = async () => {
         try {
             await signOut(auth);
-            // O listener `onAuthStateChanged` em `W3LabsAgro.jsx` irá
-            // detectar a mudança de estado e redirecionar para a tela de Login.
         } catch (error) {
             console.error("Erro ao fazer logout:", error);
-            alert("Não foi possível sair. Tente novamente.");
+            Alert.alert("Atenção", "Não foi possível sair. Tente novamente.");
         }
     };
 
-    // Busca Localização e Clima (OpenWeatherMap)
+    // Busca Localização e Clima
     useEffect(() => {
         (async () => {
             try {
                 let { status } = await Location.requestForegroundPermissionsAsync();
                 if (status !== 'granted') {
-                    setWeather({ ...weather, desc: 'Permissão de localização negada' });
+                    setWeather({ ...weather, desc: 'Permissão negada' });
                     return;
                 }
 
@@ -803,7 +670,7 @@ export default function Dashboard({ navigation }) {
                 if (CONFIG.WEATHER_API_KEY) {
                     const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&appid=${CONFIG.WEATHER_API_KEY}&units=metric&lang=pt_br`);
                     const data = await res.json();
-                    
+
                     if (data.main) {
                         setWeather({
                             temp: Math.round(data.main.temp),
@@ -821,7 +688,7 @@ export default function Dashboard({ navigation }) {
         })();
     }, []);
 
-    // Array dos Botões do Menu na Ordem Exata
+    // Menu na Ordem Exata
     const gridItems = [
         { id: 1, title: 'PULVERIZAÇÃO', icon: 'spray-can', lib: FontAwesome5, screen: 'Pulverizacao' },
         { id: 2, title: 'PLANTIO', icon: 'seedling', lib: FontAwesome5, screen: 'Plantios' },
@@ -835,19 +702,16 @@ export default function Dashboard({ navigation }) {
         { id: 10, title: 'MANUAIS', icon: 'book-open', lib: FontAwesome5, screen: 'Manuais' },
     ];
 
-    // Lógica para estruturar exatamente o layout 3x3x3x1
-    const gridRows = [
-        gridItems.slice(0, 3), // [0, 1, 2]
-        gridItems.slice(3, 6), // [3, 4, 5]
-        gridItems.slice(6, 9), // [6, 7, 8]
-        gridItems.slice(9, 10) // [9]
-    ];
+    const gridRows = [];
+    for (let i = 0; i < gridItems.length; i += 3) {
+        gridRows.push(gridItems.slice(i, i + 3));
+    }
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* HEADER VERDE DO DASHBOARD */}
+            <View style={styles.webContainer}>
+            {/* HEADER VERDE */}
             <View style={styles.topHeader}>
-                {/* Linha Superior: Nome e Ícones */}
                 <View style={styles.headerTopRow}>
                     <Text style={styles.greetingText}>Olá, {userName}</Text>
                     <View style={styles.headerIconsWrapper}>
@@ -860,12 +724,11 @@ export default function Dashboard({ navigation }) {
                     </View>
                 </View>
 
-                {/* Bloco de Clima Central */}
+                {/* Bloco de Clima */}
                 <View style={styles.weatherInfoWrapper}>
                     <Text style={styles.weatherTempText}>{weather.temp}°C</Text>
                     <Text style={styles.weatherDescText}>{weather.desc.replace(/\b\w/g, l => l.toUpperCase())}</Text>
-                    
-                    {/* Pílula Translucida com Info Extra */}
+
                     <View style={styles.weatherPill}>
                         <View style={styles.pillItem}>
                             <Ionicons name="water" size={14} color={THEME.textWhite} />
@@ -883,24 +746,24 @@ export default function Dashboard({ navigation }) {
                 </View>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingTop: 40 }}>
-                {/* ESTRUTURA FIXA DE LINHAS PARA GARANTIR O FORMATO 3x3x3x1 */}
+            <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingTop: 30 }}>
+                {/* GRID 3x3x3x1 RESPONSIVO */}
                 <View style={styles.gridContainer}>
                     {gridRows.map((row, rowIndex) => (
                         <View key={rowIndex} style={styles.gridRow}>
                             {row.map((item) => (
-                                <TouchableOpacity 
-                                    key={item.id} 
-                                    style={styles.gridButton}
-                                    onPress={() => item.screen ? navigation.navigate(item.screen, item.params) : alert('Tela não implementada.')}
+                                <TouchableOpacity
+                                    key={item.id}
+                                    style={[styles.gridButton, { width: buttonWidth, height: Platform.OS === 'web' ? 150 : buttonWidth }]}
+                                    onPress={() => item.screen ? navigation.navigate(item.screen, item.params) : Alert.alert('Aviso', 'Tela em construção.')}
                                 >
-                                    <item.lib 
-                                        name={item.icon} 
-                                        size={28} 
-                                        color={THEME.textWhite} 
-                                        style={{ marginBottom: 10 }}
+                                    <item.lib
+                                        name={item.icon}
+                                        size={Platform.OS === 'web' ? 32 : 28}
+                                        color={THEME.textWhite}
+                                        style={{ marginBottom: 12 }}
                                     />
-                                    <Text style={styles.gridButtonText}>{item.title}</Text>
+                                    <Text style={styles.gridButtonText} numberOfLines={1}>{item.title}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -919,12 +782,13 @@ export default function Dashboard({ navigation }) {
                     <AgronomiaChatbot onClose={() => setIsChatbotOpen(false)} />
                 </View>
             </Modal>
+            </View>
         </SafeAreaView>
     );
 }
 
 // =====================================================================
-// 5️⃣ ESTILOS GERAIS
+// 5️⃣ ESTILOS GERAIS (OTIMIZADOS PARA MOBILE)
 // =====================================================================
 
 const styles = StyleSheet.create({
@@ -932,24 +796,32 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: THEME.background,
     },
+    webContainer: {
+        flex: 1,
+        width: '100%',
+        maxWidth: Platform.OS === 'web' ? 1200 : '100%',
+        alignSelf: 'center',
+    },
     // --- Header do Dashboard ---
     topHeader: {
         backgroundColor: THEME.primary,
         width: '100%',
-        paddingBottom: 25,
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
-        paddingHorizontal: 20,
+        paddingBottom: 30,
+        borderBottomLeftRadius: Platform.OS === 'web' ? 30 : 20,
+        borderBottomRightRadius: Platform.OS === 'web' ? 30 : 20,
+        paddingHorizontal: Platform.OS === 'web' ? 40 : 20,
+        ...Platform.select({ web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 } }),
+        elevation: 5,
     },
     headerTopRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: Platform.OS === 'ios' ? 10 : 30,
+        marginTop: Platform.OS === 'ios' ? 10 : 35, // Afasta um pouco mais no Android para evitar notch
     },
     greetingText: {
         color: THEME.textWhite,
-        fontSize: 16,
+        fontSize: 22,
         fontWeight: 'bold',
     },
     headerIconsWrapper: {
@@ -960,74 +832,69 @@ const styles = StyleSheet.create({
     },
     weatherInfoWrapper: {
         alignItems: 'center',
-        marginTop: 10,
+        marginTop: 15,
     },
     weatherTempText: {
-        fontSize: 48,
+        fontSize: 56,
         fontWeight: 'bold',
         color: THEME.textWhite,
     },
     weatherDescText: {
-        fontSize: 14,
+        fontSize: 18,
         color: THEME.textWhite,
         marginBottom: 15,
         opacity: 0.9,
     },
     weatherPill: {
         flexDirection: 'row',
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
         borderRadius: 30,
         paddingVertical: 8,
-        paddingHorizontal: 20,
+        paddingHorizontal: 15,
         alignItems: 'center',
         justifyContent: 'center',
     },
     pillItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginHorizontal: 15,
+        marginHorizontal: 12,
     },
     pillText: {
         color: THEME.textWhite,
-        fontSize: 12,
+        fontSize: 16,
         fontWeight: '600',
         marginLeft: 6,
     },
-    
-    // --- Grid do Dashboard (Layout 3x3x3x1) ---
+
+    // --- Grid do Dashboard Mobile ---
     gridContainer: {
         width: '100%',
+        paddingHorizontal: Platform.OS === 'web' ? 20 : 10,
         alignItems: 'center',
-        paddingHorizontal: 10,
     },
     gridRow: {
         flexDirection: 'row',
         justifyContent: 'center',
         width: '100%',
+        marginBottom: Platform.OS === 'web' ? 20 : 15,
     },
     gridButton: {
         backgroundColor: THEME.primaryDark,
-        width: Platform.OS === 'web' ? 150 : (width - 80) / 3,
-        height: Platform.OS === 'web' ? 120 : 100,
-        borderRadius: 15,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+        ...Platform.select({ web: { boxShadow: '0px 4px 5px rgba(0,0,0,0.2)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 5 } }),
         elevation: 6,
-        margin: 10,
-        overflow: 'hidden',
+        marginHorizontal: Platform.OS === 'web' ? 10 : 5,
     },
     gridButtonText: {
         color: THEME.textWhite,
-        fontSize: Platform.OS === 'web' ? 14 : 10,
+        fontSize: Platform.OS === 'web' ? 16 : 13,
         fontWeight: 'bold',
         textAlign: 'center',
         paddingHorizontal: 5,
     },
-    
+
     // --- FAB ---
     chatbotFab: {
         position: 'absolute',
@@ -1039,41 +906,35 @@ const styles = StyleSheet.create({
         borderRadius: 30,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+        ...Platform.select({ web: { boxShadow: '0px 4px 4px rgba(0,0,0,0.3)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 } }),
         elevation: 6,
         borderWidth: 2,
         borderColor: '#fff',
     },
 
-    // --- Estilos do Chatbot ---
+    // --- Estilos do Chatbot Mobile ---
     modalOverlayChatbot: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'flex-end',
-        alignItems: 'flex-end',
-        padding: Platform.OS === 'web' ? 20 : 10,
+        alignItems: Platform.OS === 'web' ? 'flex-end' : 'center',
+        paddingHorizontal: Platform.OS === 'web' ? 30 : 10,
+        paddingBottom: Platform.OS === 'web' ? 30 : 20,
     },
     chatbotPopupContainer: {
         backgroundColor: THEME.secondary,
-        height: '85%',
-        maxHeight: 650,
-        width: '100%',
-        maxWidth: 400,  
-        borderRadius: 15,
+        height: Platform.OS === 'web' ? 600 : '85%',
+        width: Platform.OS === 'web' ? 400 : '100%',
+        borderRadius: 20,
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
-        shadowRadius: 10,
+        ...Platform.select({ web: { boxShadow: '0px 0px 10px rgba(0,0,0,0.2)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10 } }),
         elevation: 10,
     },
     chatbotHeader: {
         backgroundColor: THEME.secondary,
         flexDirection: 'row',
         justifyContent: 'space-between',
-        padding: 15,
+        padding: 18,
         alignItems: 'center',
         borderBottomWidth: 1,
         borderColor: '#EAEAEA',
@@ -1118,7 +979,7 @@ const styles = StyleSheet.create({
         color: THEME.textBlack,
         flex: 1,
     },
-    
+
     formSectionTitle: {
         fontSize: 16,
         fontWeight: 'bold',
@@ -1146,7 +1007,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
         fontWeight: '600',
     },
-    
+
     messageBubble: {
         padding: 15,
         borderRadius: 15,
@@ -1177,7 +1038,7 @@ const styles = StyleSheet.create({
     chatInputContainer: {
         flexDirection: 'row',
         padding: 10,
-        paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+        paddingBottom: Platform.OS === 'ios' ? 25 : 15, // Notch padding
         backgroundColor: THEME.secondary,
         borderTopWidth: 1,
         borderColor: '#EAEAEA',
@@ -1190,19 +1051,19 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderRadius: 20,
         maxHeight: 100,
-        minHeight: 40,
+        minHeight: 45,
         color: THEME.textBlack,
     },
     chatbotSendButton: {
         backgroundColor: THEME.primary,
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 46,
+        height: 46,
+        borderRadius: 23,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 10,
     },
-    
+
     // --- Modal Configs ---
     modalOverlay: {
         flex: 1,
@@ -1214,16 +1075,16 @@ const styles = StyleSheet.create({
         backgroundColor: THEME.secondary,
         borderRadius: 15,
         overflow: 'hidden',
-        maxWidth: 500,
         width: '100%',
         alignSelf: 'center',
     },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        padding: 15,
+        padding: 18,
         borderBottomWidth: 1,
         borderColor: '#eee',
+        alignItems: 'center',
     },
     modalTitle: {
         fontSize: 18,
@@ -1259,9 +1120,9 @@ const styles = StyleSheet.create({
         marginTop: 4
     },
     radioButtonOuter: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
         borderWidth: 2,
         borderColor: '#ccc',
         justifyContent: 'center',
@@ -1269,9 +1130,9 @@ const styles = StyleSheet.create({
         marginLeft: 10
     },
     radioButtonInner: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
         backgroundColor: THEME.primary
     }
 });

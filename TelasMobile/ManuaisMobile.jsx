@@ -2,10 +2,10 @@
 // Manuais.jsx
 //
 // Módulo de Gestão de Manuais e Documentos.
-// Integrado ao Firestore, AsyncStorage (Cache), suporte a Web (Dropzone/iframe) 
-// e Mobile (DocumentPicker/WebView).
+// Integrado ao Firestore, AsyncStorage (Cache) e otimizado exclusivamente
+// para Mobile (DocumentPicker, FileSystem e WebView).
 // -----------------------------------------------------------------------------
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     StyleSheet,
     Text,
@@ -19,43 +19,39 @@ import {
     Platform,
     ActivityIndicator,
     Alert,
-    Image
+    Image,
+    LayoutAnimation,
+    UIManager
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useDropzone } from 'react-dropzone';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Firebase
 import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig'; // Ajuste o caminho conforme seu projeto
-
-// Importação condicional do FileSystem para Mobile
-let FileSystem = null;
-if (Platform.OS !== 'web') {
-    try {
-        FileSystem = require('expo-file-system');
-    } catch (error) {
-        console.warn('expo-file-system não disponível:', error);
-    }
-}
 
 // =====================================================================
 // 1️⃣ CONFIGURAÇÕES E TEMA
 // =====================================================================
 
 const THEME = {
-    primary: '#6DB33F',
-    primaryDark: '#5A9634',
+    primary: '#4CAF50',
+    primaryDark: '#388E3C',
     secondary: '#FFFFFF',
-    background: '#F4F6F4',
+    background: '#F9FBF9',
     textBlack: '#2C3329',
     textWhite: '#FFFFFF',
-    secondaryText: '#7A8078',
-    grayInput: '#EEF0EE',
+    secondaryText: '#4A4A4A',
+    grayInput: '#F0F4F1',
     lightGray: '#E0E0E0',
-    error: '#D32F2F',
+    error: '#E53935',
 };
 
 const MANUAL_CONFIG = {
@@ -101,21 +97,9 @@ const validateFile = (file) => {
     return { isValid: true, error: null };
 };
 
-const convertFileToBase64 = async (fileUri, file) => {
+const convertFileToBase64 = async (fileUri) => {
     try {
-        if (Platform.OS === 'web' && file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result.split(',')[1] || reader.result);
-                reader.onerror = () => reject(new Error('Erro ao ler o arquivo'));
-                reader.readAsDataURL(file);
-            });
-        }
-        
-        if (FileSystem && FileSystem.readAsStringAsync) {
-            return await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
-        }
-        throw new Error('Não foi possível converter o arquivo');
+        return await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
     } catch (error) {
         throw new Error('Não foi possível processar o arquivo selecionado');
     }
@@ -169,26 +153,8 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [file, setFile] = useState(null);
-    const [rawFile, setRawFile] = useState(null);
     const [errors, setErrors] = useState({});
     const [data, setData] = useState({ titulo: '', descricao: '', arquivoURL: '', arquivoNome: '', arquivoBase64: null });
-
-    // Lógica do Dropzone (Apenas Web)
-    const onDrop = useCallback(acceptedFiles => {
-        const droppedFile = acceptedFiles[0];
-        if (droppedFile) {
-            const asset = { name: droppedFile.name, size: droppedFile.size, mimeType: droppedFile.type, file: droppedFile, uri: URL.createObjectURL(droppedFile) };
-            const validation = validateFile(asset);
-            if (!validation.isValid) return Alert.alert('Ficheiro Inválido', validation.error);
-
-            setFile(asset);
-            setRawFile(asset.file);
-            setData(prev => ({ ...prev, arquivoNome: asset.name, arquivoURL: '', arquivoBase64: null }));
-            setErrors(prev => ({ ...prev, arquivo: null }));
-        }
-    }, []);
-
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: 'application/pdf', multiple: false });
 
     // Busca manual existente
     useEffect(() => {
@@ -216,10 +182,8 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
                 const asset = result.assets[0];
                 const validation = validateFile(asset);
                 if (!validation.isValid) return Alert.alert('Ficheiro Inválido', validation.error);
-                
+
                 setFile(asset);
-                if (Platform.OS === 'web' && asset.file) setRawFile(asset.file);
-                
                 setData(prev => ({ ...prev, arquivoNome: asset.name, arquivoURL: '', arquivoBase64: null }));
                 setErrors(prev => ({ ...prev, arquivo: null }));
             }
@@ -231,7 +195,7 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
         if (!data.titulo.trim()) newErrors.titulo = ERROR_MESSAGES.REQUIRED_TITLE;
         if (!file && !data.arquivoBase64 && !data.arquivoURL?.trim()) newErrors.arquivo = ERROR_MESSAGES.REQUIRED_FILE;
         if (data.arquivoURL?.trim() && !validateUrl(data.arquivoURL)) newErrors.arquivoURL = ERROR_MESSAGES.INVALID_URL;
-        
+
         setErrors(newErrors);
         if (Object.keys(newErrors).length > 0) return Alert.alert('Erro', 'Preencha os campos corretamente.');
 
@@ -239,9 +203,9 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
         try {
             const uid = auth.currentUser.uid;
             let fileBase64 = data.arquivoBase64;
-            
+
             if (file) {
-                fileBase64 = await convertFileToBase64(file.uri, rawFile);
+                fileBase64 = await convertFileToBase64(file.uri);
             }
 
             const id = itemId || doc(collection(db, 'users', uid, 'manualItems')).id;
@@ -256,10 +220,10 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
             };
 
             await setDoc(doc(db, 'users', uid, 'manualItems', id), dataToSave, { merge: true });
-            
+
             // Limpa cache se existia
             if (itemId) await AsyncStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${id}`);
-            
+
             onClose();
         } catch (e) {
             Alert.alert("Erro", "Não foi possível salvar o manual. " + e.message);
@@ -268,23 +232,19 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
         }
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId));
-            await AsyncStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`);
-            onClose();
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja excluir este manual?')) {
-                deleteAction();
+    const handleDelete = () => {
+        Alert.alert('Excluir', 'Deseja excluir este manual?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Excluir',
+                style: 'destructive',
+                onPress: async () => {
+                    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId));
+                    await AsyncStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`);
+                    onClose();
+                }
             }
-        } else {
-            Alert.alert('Excluir', 'Deseja excluir este manual?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Excluir', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading) return <Modal visible transparent><View style={styles.modalOverlay}><ActivityIndicator size="large" color={THEME.primary} /></View></Modal>;
@@ -300,27 +260,17 @@ const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
                     <ScrollView showsVerticalScrollIndicator={false}>
                         <FormInput label="Nome / Equipamento *" value={data.titulo} onChangeText={v => setField('titulo', v)} placeholder="Ex: Manual S770" error={errors.titulo} />
                         <FormInput label="Descrição" value={data.descricao} onChangeText={v => setField('descricao', v)} placeholder="Versão, observações..." multiline error={errors.descricao} />
-                        
+
                         <Text style={styles.formLabel}>Arquivo PDF *</Text>
-                        {Platform.OS === 'web' ? (
-                            <View {...getRootProps({ style: styles.dropzone })} >
-                                <input {...getInputProps()} />
-                                <Ionicons name="cloud-upload-outline" size={32} color={THEME.secondaryText} style={{ marginBottom: 10 }} />
-                                <Text style={{ color: THEME.secondaryText, textAlign: 'center' }}>
-                                    {isDragActive ? 'Solte o PDF aqui...' : 'Arraste e solte o PDF aqui, ou clique para selecionar'}
-                                </Text>
-                            </View>
-                        ) : (
-                            <TouchableOpacity style={styles.btnSecondary} onPress={pickDocument} disabled={saving}>
-                                <Ionicons name="document-attach-outline" size={20} color={THEME.primary} style={{ marginRight: 10 }} />
-                                <Text style={styles.btnSecondaryText}>{data.arquivoNome || file ? 'Alterar PDF' : 'Selecionar PDF Local'}</Text>
-                            </TouchableOpacity>
-                        )}
-                        
-                        {(data.arquivoNome || file) && <Text style={styles.fileNameText}>Ficheiro: {data.arquivoNome || file.name}</Text>}
-                        
+                        <TouchableOpacity style={styles.btnSecondary} onPress={pickDocument} disabled={saving}>
+                            <Ionicons name="document-attach-outline" size={20} color={THEME.primary} style={{ marginRight: 10 }} />
+                            <Text style={styles.btnSecondaryText}>{data.arquivoNome || file ? 'Alterar PDF' : 'Selecionar PDF Local'}</Text>
+                        </TouchableOpacity>
+
+                        {(data.arquivoNome || file) && <Text style={styles.fileNameText}>Ficheiro: {data.arquivoNome || file?.name}</Text>}
+
                         <Text style={styles.orText}>OU</Text>
-                        
+
                         <FormInput label="URL do PDF (Externo)" value={data.arquivoURL} onChangeText={v => setField('arquivoURL', v)} placeholder="Cole um link externo" keyboardType="url" error={errors.arquivoURL} />
                         {errors.arquivo && <Text style={[styles.errorText, { textAlign: 'center' }]}>{errors.arquivo}</Text>}
 
@@ -344,11 +294,16 @@ const ManuaisListaScreen = ({ onSelectCategory, onBack }) => {
     const [categorias, setCategorias] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     useEffect(() => {
         if (!auth.currentUser) return;
         const q = collection(db, 'users', auth.currentUser.uid, 'manualCategorias');
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.nome.localeCompare(b.nome));
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nome.localeCompare(b.nome));
+            triggerAnimation();
             setCategorias(data);
             setLoading(false);
         });
@@ -357,26 +312,28 @@ const ManuaisListaScreen = ({ onSelectCategory, onBack }) => {
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title="Marcas e Categorias" onBack={onBack} />
             <ScrollView contentContainerStyle={styles.listContainer}>
                 {loading ? <ActivityIndicator size="large" color={THEME.primary} style={{ marginTop: 50 }} />
-                : categorias.length === 0 ? <Text style={styles.emptyText}>Nenhuma categoria encontrada.</Text>
-                : categorias.map(item => (
-                    <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => onSelectCategory(item.id, item.nome)}>
-                        {item.imagem ? (
-                            <Image source={{ uri: item.imagem }} style={styles.listImage} resizeMode="contain" />
-                        ) : (
-                            <View style={styles.listImagePlaceholder}>
-                                <MaterialCommunityIcons name="tractor" size={28} color={THEME.secondaryText} />
-                            </View>
-                        )}
-                        <View style={styles.listContent}>
-                            <Text style={styles.listTitle}>{item.nome}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
-                    </TouchableOpacity>
-                ))}
+                    : categorias.length === 0 ? <Text style={styles.emptyText}>Nenhuma categoria encontrada.</Text>
+                        : categorias.map(item => (
+                            <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => { triggerAnimation(); onSelectCategory(item.id, item.nome); }}>
+                                {item.imagem ? (
+                                    <Image source={{ uri: item.imagem }} style={styles.listImage} resizeMode="contain" />
+                                ) : (
+                                    <View style={styles.listImagePlaceholder}>
+                                        <MaterialCommunityIcons name="tractor" size={28} color={THEME.secondaryText} />
+                                    </View>
+                                )}
+                                <View style={styles.listContent}>
+                                    <Text style={styles.listTitle}>{item.nome}</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
+                            </TouchableOpacity>
+                        ))}
             </ScrollView>
+            </View>
         </SafeAreaView>
     );
 };
@@ -388,11 +345,16 @@ const ManualItemsListaScreen = ({ categoryId, categoryName, onBack, onViewPdf })
     const [modalVisible, setModalVisible] = useState(false);
     const [editItemId, setEditItemId] = useState(null);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     useEffect(() => {
         if (!auth.currentUser) return;
         const q = query(collection(db, 'users', auth.currentUser.uid, 'manualItems'), where('categoryId', '==', categoryId));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => a.titulo.localeCompare(b.titulo));
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.titulo.localeCompare(b.titulo));
+            triggerAnimation();
             setItems(data);
             setLoading(false);
         });
@@ -400,48 +362,54 @@ const ManualItemsListaScreen = ({ categoryId, categoryName, onBack, onViewPdf })
     }, [categoryId]);
 
     const handlePress = (item) => {
-        if (item.arquivoBase64 || item.arquivoURL) onViewPdf(item.id, item.titulo);
+        if (item.arquivoBase64 || item.arquivoURL) {
+            triggerAnimation();
+            onViewPdf(item.id, item.titulo);
+        }
         else Alert.alert("Sem PDF", "Este item não possui um PDF associado.");
     };
 
     const handleEdit = (id) => {
+        triggerAnimation();
         setEditItemId(id);
         setModalVisible(true);
     };
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title={categoryName} onBack={onBack} />
             <ScrollView contentContainerStyle={styles.listContainer}>
                 {loading ? <ActivityIndicator size="large" color={THEME.primary} style={{ marginTop: 50 }} />
-                : items.length === 0 ? <Text style={styles.emptyText}>Nenhum manual cadastrado nesta marca.</Text>
-                : items.map(item => {
-                    const hasFile = !!(item.arquivoBase64 || item.arquivoURL);
-                    return (
-                        <TouchableOpacity key={item.id} style={[styles.listItem, !hasFile && { opacity: 0.6 }]} onPress={() => handlePress(item)}>
-                            <View style={styles.listIconBox}>
-                                <Ionicons name={hasFile ? "document-text" : "document-outline"} size={24} color={hasFile ? THEME.primary : THEME.secondaryText} />
-                            </View>
-                            <View style={styles.listContent}>
-                                <Text style={styles.listTitle}>{item.titulo}</Text>
-                                <Text style={styles.listSubtitle}>{item.descricao || (hasFile ? 'Visualizar PDF' : 'Sem ficheiro')}</Text>
-                            </View>
-                            <TouchableOpacity onPress={() => handleEdit(item.id)} style={{ padding: 10 }}>
-                                <Ionicons name="pencil" size={22} color={THEME.secondaryText} />
-                            </TouchableOpacity>
-                        </TouchableOpacity>
-                    );
-                })}
+                    : items.length === 0 ? <Text style={styles.emptyText}>Nenhum manual cadastrado nesta marca.</Text>
+                        : items.map(item => {
+                            const hasFile = !!(item.arquivoBase64 || item.arquivoURL);
+                            return (
+                                <TouchableOpacity key={item.id} style={[styles.listItem, !hasFile && { opacity: 0.6 }]} onPress={() => handlePress(item)}>
+                                    <View style={styles.listIconBox}>
+                                        <Ionicons name={hasFile ? "document-text" : "document-outline"} size={24} color={hasFile ? THEME.primary : THEME.secondaryText} />
+                                    </View>
+                                    <View style={styles.listContent}>
+                                        <Text style={styles.listTitle}>{item.titulo}</Text>
+                                        <Text style={styles.listSubtitle}>{item.descricao || (hasFile ? 'Visualizar PDF' : 'Sem ficheiro')}</Text>
+                                    </View>
+                                    <TouchableOpacity onPress={() => handleEdit(item.id)} style={{ padding: 10 }}>
+                                        <Ionicons name="pencil" size={22} color={THEME.secondaryText} />
+                                    </TouchableOpacity>
+                                </TouchableOpacity>
+                            );
+                        })}
             </ScrollView>
 
             <FabAdd onAdd={() => handleEdit(null)} />
-            
+
             {modalVisible && (
-                <AddOrEditManualItemModal 
-                    visible={true} itemId={editItemId} categoryId={categoryId} 
-                    onClose={() => setModalVisible(false)} 
+                <AddOrEditManualItemModal
+                    visible={true} itemId={editItemId} categoryId={categoryId}
+                    onClose={() => setModalVisible(false)}
                 />
             )}
+            </View>
         </SafeAreaView>
     );
 };
@@ -459,22 +427,22 @@ const VisualizarPDFScreen = ({ itemId, title, onBack }) => {
                 const cachedData = await AsyncStorage.getItem(cacheKey);
                 if (cachedData) {
                     const item = JSON.parse(cachedData);
-                    setPdfSource(Platform.OS === 'web' ? (item.arquivoBase64 ? `data:application/pdf;base64,${item.arquivoBase64}` : item.arquivoURL) : { uri: item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}` });
+                    setPdfSource({ uri: item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}` });
                     setLoading(false);
                     return;
                 }
 
                 const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId));
                 if (!docSnap.exists()) throw new Error('Item não encontrado');
-                
+
                 const item = docSnap.data();
-                const source = Platform.OS === 'web' ? (item.arquivoBase64 ? `data:application/pdf;base64,${item.arquivoBase64}` : item.arquivoURL) : { uri: item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}` };
-                
-                if (source) {
+                const source = { uri: item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}` };
+
+                if (source.uri) {
                     setPdfSource(source);
                     await AsyncStorage.setItem(cacheKey, JSON.stringify({ arquivoBase64: item.arquivoBase64, arquivoURL: item.arquivoURL }));
                 } else throw new Error('PDF Inválido');
-                
+
             } catch (err) {
                 setError(err.message || ERROR_MESSAGES.LOAD_ERROR);
             } finally {
@@ -486,13 +454,14 @@ const VisualizarPDFScreen = ({ itemId, title, onBack }) => {
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title={title} onBack={onBack} />
             <View style={{ flex: 1 }}>
-                {loading ? <View style={styles.center}><ActivityIndicator size="large" color={THEME.primary}/></View>
-                : error ? <View style={styles.center}><Ionicons name="alert-circle-outline" size={48} color={THEME.error}/><Text style={styles.emptyText}>{error}</Text></View>
-                : Platform.OS === 'web' ? <iframe src={pdfSource} style={{ flex: 1, borderWidth: 0 }} title={title} />
-                : <WebView source={pdfSource} style={{ flex: 1 }} originWhitelist={['*']} javaScriptEnabled domStorageEnabled />
+                {loading ? <View style={styles.center}><ActivityIndicator size="large" color={THEME.primary} /></View>
+                    : error ? <View style={styles.center}><Ionicons name="alert-circle-outline" size={48} color={THEME.error} /><Text style={styles.emptyText}>{error}</Text></View>
+                        : <WebView source={pdfSource} style={{ flex: 1 }} originWhitelist={['*']} javaScriptEnabled domStorageEnabled />
                 }
+            </View>
             </View>
         </SafeAreaView>
     );
@@ -505,15 +474,19 @@ const VisualizarPDFScreen = ({ itemId, title, onBack }) => {
 export default function Manuais({ navigation }) {
     const [route, setRoute] = useState({ name: 'categorias', params: {} }); // 'categorias', 'items', 'pdf'
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     if (route.name === 'pdf') {
-        return <VisualizarPDFScreen itemId={route.params.itemId} title={route.params.title} onBack={() => setRoute({ name: 'items', params: { categoryId: route.params.categoryId, categoryName: route.params.categoryName } })} />;
+        return <VisualizarPDFScreen itemId={route.params.itemId} title={route.params.title} onBack={() => { triggerAnimation(); setRoute({ name: 'items', params: { categoryId: route.params.categoryId, categoryName: route.params.categoryName } }); }} />;
     }
 
     if (route.name === 'items') {
-        return <ManualItemsListaScreen categoryId={route.params.categoryId} categoryName={route.params.categoryName} onBack={() => setRoute({ name: 'categorias', params: {} })} onViewPdf={(id, title) => setRoute({ name: 'pdf', params: { itemId: id, title, categoryId: route.params.categoryId, categoryName: route.params.categoryName } })} />;
+        return <ManualItemsListaScreen categoryId={route.params.categoryId} categoryName={route.params.categoryName} onBack={() => { triggerAnimation(); setRoute({ name: 'categorias', params: {} }); }} onViewPdf={(id, title) => { triggerAnimation(); setRoute({ name: 'pdf', params: { itemId: id, title, categoryId: route.params.categoryId, categoryName: route.params.categoryName } }); }} />;
     }
 
-    return <ManuaisListaScreen onBack={() => navigation.goBack()} onSelectCategory={(id, name) => setRoute({ name: 'items', params: { categoryId: id, categoryName: name } })} />;
+    return <ManuaisListaScreen onBack={() => navigation.goBack()} onSelectCategory={(id, name) => { triggerAnimation(); setRoute({ name: 'items', params: { categoryId: id, categoryName: name } }); }} />;
 }
 
 // =====================================================================
@@ -522,49 +495,54 @@ export default function Manuais({ navigation }) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
+    webContainer: {
+        flex: 1,
+        width: '100%',
+        maxWidth: 800,
+        alignSelf: 'center',
+    },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    
+
     // Header
     header: { backgroundColor: THEME.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60, ...Platform.select({ android: { marginTop: 24 } }) },
     backButton: { padding: 5 },
-    headerTitle: { color: THEME.textWhite, fontSize: 18, fontWeight: 'bold' },
-    
+    headerTitle: { color: THEME.textWhite, fontSize: 22, fontWeight: 'bold' },
+
     // Lists
     listContainer: { padding: 15, alignItems: 'center', flexGrow: 1 },
-    emptyText: { color: THEME.secondaryText, fontSize: 14, marginTop: 20 },
-    listItem: { flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: 600, padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+    emptyText: { color: THEME.secondaryText, fontSize: 18, marginTop: 20 },
+    listItem: { flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, ...Platform.select({ web: { boxShadow: '0px 2px 3px rgba(0,0,0,0.05)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3 } }), elevation: 2 },
     listIconBox: { width: 50, height: 50, backgroundColor: THEME.grayInput, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
     listImage: { width: 50, height: 50, borderRadius: 25, marginRight: 15 },
     listImagePlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: THEME.lightGray, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
     listContent: { flex: 1 },
-    listTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    listSubtitle: { fontSize: 13, color: THEME.secondaryText },
-    
+    listTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
+    listSubtitle: { fontSize: 16, color: THEME.secondaryText },
+
     // FAB
     fabContainer: { position: 'absolute', right: 20, bottom: 30, alignItems: 'center' },
     fabAdd: { backgroundColor: THEME.primary, width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 5 },
-    
+
     // Modals & Forms
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 20 },
-    modalContent: { backgroundColor: THEME.secondary, borderRadius: 15, padding: 20, maxHeight: '90%', width: '100%', maxWidth: 600, alignSelf: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%', width: '100%' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: THEME.textBlack },
+    modalTitle: { fontSize: 24, fontWeight: 'bold', color: THEME.textBlack },
     closeButton: { backgroundColor: THEME.grayInput, padding: 6, borderRadius: 8 },
     inputContainer: { marginBottom: 15 },
-    formLabel: { fontSize: 12, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: THEME.textBlack },
+    formLabel: { fontSize: 16, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
+    input: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, height: 60, fontSize: 18, color: THEME.textBlack },
     errorText: { color: THEME.error, fontSize: 11, marginTop: 4 },
-    
+
     // Custom Buttons
-    btnSecondary: { backgroundColor: THEME.grayInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, marginTop: 5 },
-    btnSecondaryText: { color: THEME.primary, fontWeight: 'bold' },
-    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, paddingVertical: 15, alignItems: 'center', marginTop: 15, marginBottom: 10 },
-    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 16 },
-    deleteButton: { backgroundColor: 'transparent', borderWidth: 1, borderColor: THEME.error, borderRadius: 8, paddingVertical: 15, alignItems: 'center', marginBottom: 20 },
-    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 16 },
-    
+    btnSecondary: { backgroundColor: THEME.grayInput, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 60, borderRadius: 10, marginTop: 5 },
+    btnSecondaryText: { color: THEME.primary, fontWeight: 'bold', fontSize: 18 },
+    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, height: 60, justifyContent: 'center', alignItems: 'center', marginTop: 15, marginBottom: 10 },
+    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 20 },
+    deleteButton: { backgroundColor: 'transparent', borderWidth: 1, borderColor: THEME.error, borderRadius: 8, height: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 18 },
+
     // File Upload UI
-    dropzone: { borderWidth: 2, borderColor: THEME.lightGray, borderStyle: 'dashed', borderRadius: 10, padding: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: THEME.grayInput },
-    fileNameText: { textAlign: 'center', marginTop: 10, fontSize: 12, color: THEME.primaryDark, fontWeight: '600' },
-    orText: { textAlign: 'center', marginVertical: 15, color: THEME.secondaryText, fontWeight: 'bold' }
+    fileNameText: { textAlign: 'center', marginTop: 10, fontSize: 16, color: THEME.primaryDark, fontWeight: '600' },
+    orText: { textAlign: 'center', marginVertical: 15, color: THEME.secondaryText, fontWeight: 'bold', fontSize: 18 }
 });

@@ -3,6 +3,7 @@
 //
 // Ecrãs e modais para registo de plantios e colheitas, com lógica de
 // atualização de stock, totalmente integrado com o Firestore e Design Moderno.
+// Otimizado para Mobile.
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -17,10 +18,17 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
-    Alert
+    Alert,
+    LayoutAnimation,
+    UIManager
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import { collection, doc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Assumindo que essas funções estão exportadas no seu firebaseConfig
 import {
@@ -36,15 +44,15 @@ import {
 // =====================================================================
 
 const THEME = {
-    primary: '#6DB33F',       // Verde vibrante
-    primaryDark: '#5A9634',   // Verde escuro
+    primary: '#4CAF50',
+    primaryDark: '#388E3C',
     secondary: '#FFFFFF',     // Branco
-    background: '#F4F6F4',    // Fundo cinza bem claro
+    background: '#F9FBF9',    // Fundo cinza bem claro
     textBlack: '#2C3329',     // Texto escuro
     textWhite: '#FFFFFF',     // Texto branco
-    secondaryText: '#7A8078', // Cinza para subtítulos
-    grayInput: '#EEF0EE',     // Fundo dos inputs
-    error: '#D32F2F',         // Vermelho para erros
+    secondaryText: '#4A4A4A', // Cinza para subtítulos
+    grayInput: '#F0F4F1',     // Fundo dos inputs
+    error: '#E53935',         // Vermelho para erros
 };
 
 const FIELD_VALIDATION = {
@@ -145,7 +153,6 @@ const FormInput = ({ label, placeholder, value, onChangeText, required, keyboard
     </View>
 );
 
-// Componente Customizado para Select (Abre um modal com lista)
 const FormSelect = ({ label, placeholder, value, onValueChange, items, required, error }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const selectedItem = items.find(i => i.value === value);
@@ -187,17 +194,32 @@ const FormSelect = ({ label, placeholder, value, onValueChange, items, required,
     );
 };
 
-const FormDate = ({ label, value }) => (
-    <View style={styles.inputContainer}>
-        <Text style={styles.formLabel}>{label}</Text>
-        <TouchableOpacity style={styles.dateBox}>
-            <View style={styles.dateIconWrapper}>
-                <FontAwesome5 name="calendar-alt" size={20} color={THEME.textWhite} />
-            </View>
-            <Text style={styles.dateText}>{value}</Text>
-        </TouchableOpacity>
-    </View>
-);
+const FormDate = ({ label, value, onChange }) => {
+    const [show, setShow] = useState(false);
+    const dateValue = value instanceof Date && !isNaN(value) ? value : new Date();
+    return (
+        <View style={styles.inputContainer}>
+            <Text style={styles.formLabel}>{label}</Text>
+            <TouchableOpacity style={styles.dateBox} onPress={() => setShow(true)} activeOpacity={0.7}>
+                <View style={styles.dateIconWrapper}>
+                    <FontAwesome5 name="calendar-alt" size={24} color={THEME.textWhite} />
+                </View>
+                <Text style={styles.dateText}>{formatDate(dateValue)}</Text>
+            </TouchableOpacity>
+            {show && (
+                <DateTimePicker
+                    value={dateValue}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                        setShow(Platform.OS === 'ios');
+                        if (selectedDate && onChange) onChange(selectedDate);
+                    }}
+                />
+            )}
+        </View>
+    );
+};
 
 // =====================================================================
 // 4️⃣ MODAIS DE CADASTRO COM LÓGICA (PLANTIO E COLHEITA)
@@ -321,26 +343,22 @@ const AddOrEditColheitaModal = ({ itemId, onClose, onSaveSuccess }) => {
         else Alert.alert('Erro', 'Não foi possível salvar a colheita.');
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            try {
-                await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'colheitas', itemId));
-                onSaveSuccess();
-            } catch (e) {
-                Alert.alert('Erro', 'Falha ao eliminar.');
+    const handleDelete = () => {
+        Alert.alert('Eliminar', 'Deseja remover esta colheita?', [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+                text: 'Eliminar', 
+                style: 'destructive', 
+                onPress: async () => {
+                    try {
+                        await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'colheitas', itemId));
+                        onSaveSuccess();
+                    } catch (e) {
+                        Alert.alert('Erro', 'Falha ao eliminar.');
+                    }
+                } 
             }
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja remover esta colheita?')) {
-                deleteAction();
-            }
-        } else {
-            Alert.alert('Eliminar', 'Deseja remover esta colheita?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Eliminar', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading || loadingEquip) return (
@@ -390,7 +408,7 @@ const AddOrEditColheitaModal = ({ itemId, onClose, onSaveSuccess }) => {
                             label={`Produtividade (${UNIDADES_MEDIDA.PRODUTIVIDADE})`} editable={false}
                             value={data.produtividade} 
                         />
-                        <FormDate label="Data da Colheita" value={formatDate(data.dataColheita)} />
+                        <FormDate label="Data da Colheita" value={data.dataColheita} onChange={d => setField('dataColheita', d, 'date')} />
 
                         <TouchableOpacity style={styles.saveButton} onPress={onSave} disabled={saving}>
                             {saving ? <ActivityIndicator color={THEME.textWhite} /> : <Text style={styles.saveButtonText}>Salvar Colheita</Text>}
@@ -537,27 +555,23 @@ const AddOrEditPlantioModal = ({ itemId, onClose, onSaveSuccess }) => {
         }
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            try {
-                await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'plantios', itemId));
-                // Lógica ideal: restaurar estoque no delete. Omitido para simplicidade da UI local.
-                onSaveSuccess();
-            } catch (e) {
-                Alert.alert('Erro', 'Falha ao eliminar.');
+    const handleDelete = () => {
+        Alert.alert('Eliminar', 'Deseja remover este plantio?', [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+                text: 'Eliminar', 
+                style: 'destructive', 
+                onPress: async () => {
+                    try {
+                        await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'plantios', itemId));
+                        // Lógica ideal: restaurar estoque no delete. Omitido para simplicidade da UI local.
+                        onSaveSuccess();
+                    } catch (e) {
+                        Alert.alert('Erro', 'Falha ao eliminar.');
+                    }
+                } 
             }
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja remover este plantio?')) {
-                deleteAction();
-            }
-        } else {
-            Alert.alert('Eliminar', 'Deseja remover este plantio?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Eliminar', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading || loadingSementes) return (
@@ -616,7 +630,7 @@ const AddOrEditPlantioModal = ({ itemId, onClose, onSaveSuccess }) => {
                             label={`População (${UNIDADES_MEDIDA.POPULACAO})`} keyboardType="numeric"
                             value={data.populacaoSementes} onChangeText={v => setField('populacaoSementes', v, 'numeric')}
                         />
-                        <FormDate label="Data do Plantio" value={formatDate(data.dataPlantio)} />
+                        <FormDate label="Data do Plantio" value={data.dataPlantio} onChange={d => setField('dataPlantio', d, 'date')} />
 
                         <TouchableOpacity style={styles.saveButton} onPress={onSave} disabled={saving}>
                             {saving ? <ActivityIndicator color={THEME.textWhite} /> : <Text style={styles.saveButtonText}>Salvar Plantio</Text>}
@@ -643,10 +657,15 @@ export const PlantiosScreen = ({ navigation }) => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     useEffect(() => {
         const unsubscribe = subscribeToCollection('plantios', (data) => {
             const sorted = data.sort((a, b) => (b.dataPlantio?.toDate?.() || 0) - (a.dataPlantio?.toDate?.() || 0));
             setItems(sorted);
+            triggerAnimation();
             if (loading) setLoading(false);
         });
         return () => unsubscribe && unsubscribe();
@@ -654,6 +673,7 @@ export const PlantiosScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title="Plantios" onBack={() => navigation.goBack()} />
             <ScrollView contentContainerStyle={styles.listContainer}>
                 {loading ? (
@@ -662,7 +682,7 @@ export const PlantiosScreen = ({ navigation }) => {
                     <Text style={styles.emptyText}>Nenhum plantio registrado.</Text>
                 ) : (
                     items.map(item => (
-                        <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => setModal({ visible: true, itemId: item.id })}>
+                        <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => { triggerAnimation(); setModal({ visible: true, itemId: item.id }); }}>
                             <View style={styles.listIconBox}>
                                 <FontAwesome name="leaf" size={24} color={THEME.primary} />
                             </View>
@@ -676,8 +696,9 @@ export const PlantiosScreen = ({ navigation }) => {
                 )}
             </ScrollView>
             
-            <FabGroup onAdd={() => setModal({ visible: true, itemId: null })} onOpenAI={() => {}} />
+            <FabGroup onAdd={() => { triggerAnimation(); setModal({ visible: true, itemId: null }); }} onOpenAI={() => {}} />
             {modal.visible && <AddOrEditPlantioModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} onSaveSuccess={() => setModal({ visible: false, itemId: null })} />}
+            </View>
         </SafeAreaView>
     );
 };
@@ -687,10 +708,15 @@ export const ColheitasScreen = ({ navigation }) => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     useEffect(() => {
         const unsubscribe = subscribeToCollection('colheitas', (data) => {
             const sorted = data.sort((a, b) => (b.dataColheita?.toDate?.() || 0) - (a.dataColheita?.toDate?.() || 0));
             setItems(sorted);
+            triggerAnimation();
             if (loading) setLoading(false);
         });
         return () => unsubscribe && unsubscribe();
@@ -698,6 +724,7 @@ export const ColheitasScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title="Colheitas" onBack={() => navigation.goBack()} />
             <ScrollView contentContainerStyle={styles.listContainer}>
                 {loading ? (
@@ -706,7 +733,7 @@ export const ColheitasScreen = ({ navigation }) => {
                     <Text style={styles.emptyText}>Nenhuma colheita registrada.</Text>
                 ) : (
                     items.map(item => (
-                        <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => setModal({ visible: true, itemId: item.id })}>
+                        <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => { triggerAnimation(); setModal({ visible: true, itemId: item.id }); }}>
                             <View style={styles.listIconBox}>
                                 <MaterialCommunityIcons name="silo" size={24} color={THEME.primary} />
                             </View>
@@ -720,8 +747,9 @@ export const ColheitasScreen = ({ navigation }) => {
                 )}
             </ScrollView>
             
-            <FabGroup onAdd={() => setModal({ visible: true, itemId: null })} onOpenAI={() => {}} />
+            <FabGroup onAdd={() => { triggerAnimation(); setModal({ visible: true, itemId: null }); }} onOpenAI={() => {}} />
             {modal.visible && <AddOrEditColheitaModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} onSaveSuccess={() => setModal({ visible: false, itemId: null })} />}
+            </View>
         </SafeAreaView>
     );
 };
@@ -733,16 +761,20 @@ export const ColheitasScreen = ({ navigation }) => {
 export default function PlantioColheita() {
     const [activeScreen, setActiveScreen] = useState(null);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     if (activeScreen === 'plantio') return <PlantiosScreen onBack={() => setActiveScreen(null)} />;
     if (activeScreen === 'colheita') return <ColheitasScreen onBack={() => setActiveScreen(null)} />;
 
     return (
         <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
             <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 30, color: THEME.textBlack }}>Navegação de Teste</Text>
-            <TouchableOpacity style={[styles.saveButton, { width: 250 }]} onPress={() => setActiveScreen('plantio')}>
+            <TouchableOpacity style={[styles.saveButton, { width: 250 }]} onPress={() => { triggerAnimation(); setActiveScreen('plantio'); }}>
                 <Text style={styles.saveButtonText}>Abrir Plantios</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.saveButton, { width: 250 }]} onPress={() => setActiveScreen('colheita')}>
+            <TouchableOpacity style={[styles.saveButton, { width: 250 }]} onPress={() => { triggerAnimation(); setActiveScreen('colheita'); }}>
                 <Text style={styles.saveButtonText}>Abrir Colheitas</Text>
             </TouchableOpacity>
         </SafeAreaView>
@@ -758,6 +790,12 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: THEME.background,
     },
+    webContainer: {
+        flex: 1,
+        width: '100%',
+        maxWidth: 800,
+        alignSelf: 'center',
+    },
     // Cabeçalho
     header: {
         backgroundColor: THEME.primary,
@@ -771,7 +809,7 @@ const styles = StyleSheet.create({
     backButton: { padding: 5 },
     headerTitle: {
         color: THEME.textWhite,
-        fontSize: 18,
+        fontSize: 22,
         fontWeight: 'bold',
     },
     // Listas
@@ -782,14 +820,13 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         color: THEME.secondaryText,
-        fontSize: 14,
+        fontSize: 18,
         marginTop: 40,
     },
     listItem: {
         flexDirection: 'row',
         backgroundColor: THEME.secondary,
         width: '100%',
-        maxWidth: 600,
         padding: 15,
         borderRadius: 12,
         alignItems: 'center',
@@ -813,13 +850,13 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     listTitle: {
-        fontSize: 16,
+        fontSize: 20,
         fontWeight: 'bold',
         color: THEME.textBlack,
         marginBottom: 4,
     },
     listSubtitle: {
-        fontSize: 13,
+        fontSize: 16,
         color: THEME.secondaryText,
     },
     // Botões Flutuantes (FABs)
@@ -860,16 +897,15 @@ const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.4)',
-        justifyContent: 'center',
-        padding: 20,
+        justifyContent: 'flex-end',
     },
     modalContent: {
         backgroundColor: THEME.secondary,
-        borderRadius: 15,
+        borderTopLeftRadius: 15,
+        borderTopRightRadius: 15,
         padding: 20,
         maxHeight: '90%',
         width: '100%',
-        maxWidth: 600,
         alignSelf: 'center',
     },
     modalHeader: {
@@ -879,7 +915,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     modalTitle: {
-        fontSize: 18,
+        fontSize: 24,
         fontWeight: 'bold',
         color: THEME.textBlack,
     },
@@ -892,7 +928,7 @@ const styles = StyleSheet.create({
         marginBottom: 15,
     },
     formLabel: {
-        fontSize: 12,
+        fontSize: 16,
         color: THEME.secondaryText,
         marginBottom: 6,
         fontWeight: '500',
@@ -902,7 +938,8 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         paddingHorizontal: 15,
         paddingVertical: 12,
-        fontSize: 14,
+        height: 60,
+        fontSize: 18,
         color: THEME.textBlack,
     },
     errorText: {
@@ -915,12 +952,13 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         paddingHorizontal: 15,
         paddingVertical: 14,
+        height: 60,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
     selectText: {
-        fontSize: 14,
+        fontSize: 18,
         color: THEME.textBlack,
     },
     // Modal Customizado de Select
@@ -934,12 +972,11 @@ const styles = StyleSheet.create({
     selectModalContent: {
         backgroundColor: THEME.secondary,
         width: '100%',
-        maxWidth: 400,
         borderRadius: 15,
         padding: 20,
     },
     selectModalTitle: {
-        fontSize: 16,
+        fontSize: 22,
         fontWeight: 'bold',
         marginBottom: 15,
         color: THEME.textBlack,
@@ -953,7 +990,7 @@ const styles = StyleSheet.create({
         borderBottomColor: THEME.grayInput,
     },
     selectModalItemText: {
-        fontSize: 16,
+        fontSize: 18,
         color: THEME.textBlack,
     },
     // Custom Date
@@ -962,6 +999,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         flexDirection: 'row',
         alignItems: 'center',
+        height: 60,
         overflow: 'hidden',
     },
     dateIconWrapper: {
@@ -972,7 +1010,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     dateText: {
-        fontSize: 14,
+        fontSize: 18,
         color: THEME.textBlack,
         marginLeft: 15,
     },
@@ -980,7 +1018,7 @@ const styles = StyleSheet.create({
     saveButton: {
         backgroundColor: THEME.primary,
         borderRadius: 8,
-        paddingVertical: 15,
+        height: 60,
         alignItems: 'center',
         marginTop: 10,
         marginBottom: 10,
@@ -988,20 +1026,20 @@ const styles = StyleSheet.create({
     saveButtonText: {
         color: THEME.textWhite,
         fontWeight: 'bold',
-        fontSize: 16,
+        fontSize: 20,
     },
     deleteButton: {
         backgroundColor: 'transparent',
         borderWidth: 1,
         borderColor: THEME.error,
         borderRadius: 8,
-        paddingVertical: 15,
+        height: 60,
         alignItems: 'center',
         marginBottom: 20,
     },
     deleteButtonText: {
         color: THEME.error,
         fontWeight: 'bold',
-        fontSize: 16,
+        fontSize: 18,
     }
 });

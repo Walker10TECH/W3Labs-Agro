@@ -6,14 +6,13 @@ import {
   TextInput,
   TouchableOpacity,
   ImageBackground,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Image,
   ActivityIndicator,
+  Image,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// Importações do seu arquivo de configuração do Firebase
 import {
   auth,
   createUserWithEmailAndPassword,
@@ -22,11 +21,14 @@ import {
   updateProfile,
 } from '../firebaseConfig';
 
-export default function Login() {
-  // Controle de abas: 'register', 'login' ou 'forgot'
-  const [activeTab, setActiveTab] = useState('register');
+export default function LoginScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width > 768; // Breakpoint para layout de navegador/desktop
 
-  // Estados dos inputs
+  // Controle de telas: 'register' (Cadastro), 'login' (Entrar) ou 'forgot' (Recuperar Senha)
+  const [activeTab, setActiveTab] = useState('login');
+
+  // Estados dos formulários
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,86 +39,103 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Imagem de fundo
+  // Substitua pelo caminho correto da sua imagem de fundo
   const bgImage = require('../assets/Back.gif');
 
-  // Funções de Ação (Substitua pelos métodos reais do Firebase)
+  // ==========================================
+  // 1. FUNÇÃO DE CADASTRO
+  // ==========================================
   const handleRegister = async () => {
     if (!name || !email || !password) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos.');
+      window.alert('Atenção: Por favor, preencha todos os campos.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Erro', 'As senhas não coincidem!');
+      window.alert('Atenção: As senhas não coincidem!');
       return;
     }
+
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
-      Alert.alert('Sucesso', `Conta criada para ${name}!`);
+      window.alert(`Sucesso! Conta criada com sucesso para ${name}!`);
+
+      setPassword('');
+      setConfirmPassword('');
+      // Opcional: setActiveTab('login');
+
     } catch (error) {
       let friendlyMessage = 'Ocorreu um erro ao criar a conta. Tente novamente.';
       if (error.code === 'auth/email-already-in-use') {
-        friendlyMessage = 'Este endereço de email já está em uso.';
+        friendlyMessage = 'Este endereço de email já está em uso por outra conta.';
       } else if (error.code === 'auth/invalid-email') {
         friendlyMessage = 'O endereço de email fornecido é inválido.';
       } else if (error.code === 'auth/weak-password') {
-        friendlyMessage = 'A senha é muito fraca. Use pelo menos 6 caracteres.';
+        friendlyMessage = 'Sua senha é muito fraca. Use pelo menos 6 caracteres.';
       }
-      Alert.alert('Erro no Cadastro', friendlyMessage);
+      window.alert(`Erro no Cadastro: ${friendlyMessage}`);
     } finally {
       setLoading(false);
     }
   };
 
+  // ==========================================
+  // 2. FUNÇÃO DE LOGIN
+  // ==========================================
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Erro', 'Preencha o email e a senha.');
+      window.alert('Atenção: Preencha o email e a senha para entrar.');
       return;
     }
+
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // A navegação para a tela principal deve ser tratada por um listener
-      // de estado de autenticação (onAuthStateChanged) no componente raiz do app.
     } catch (error) {
-      let friendlyMessage = 'Ocorreu um erro ao tentar fazer login.';
+      let friendlyMessage = 'Ocorreu um erro ao tentar acessar a conta.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         friendlyMessage = 'Email ou senha incorretos.';
       } else if (error.code === 'auth/invalid-email') {
         friendlyMessage = 'O endereço de email fornecido é inválido.';
       }
-      Alert.alert('Erro no Login', friendlyMessage);
+      window.alert(`Erro no Login: ${friendlyMessage}`);
     } finally {
       setLoading(false);
     }
   };
 
+  // ==========================================
+  // 3. FUNÇÃO DE RECUPERAR SENHA
+  // ==========================================
   const handleResetPassword = async () => {
     if (!email) {
-      Alert.alert('Erro', 'Por favor, informe seu email para recuperar a senha.');
+      window.alert('Atenção: Por favor, informe seu email no campo para que possamos enviar o link de recuperação.');
       return;
     }
+
     setLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      Alert.alert('Verifique seu Email', 'Um link para redefinição de senha foi enviado para o seu email!');
+      window.alert('Verifique seu Email: O link para redefinição de senha foi enviado para sua caixa de entrada.');
       setActiveTab('login');
+      setPassword('');
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível enviar o email de redefinição. Verifique o email digitado e tente novamente.');
+      window.alert('Erro: Não foi possível enviar o email de redefinição. Verifique se o email digitado está correto.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Renderiza o Input de Senha com o ícone de olho
+  // ==========================================
+  // COMPONENTES REUTILIZÁVEIS
+  // ==========================================
   const renderPasswordInput = (placeholder, value, onChangeText, isVisible, toggleVisibility) => (
     <View style={styles.passwordContainer}>
       <TextInput
         style={styles.passwordInput}
         placeholder={placeholder}
-        placeholderTextColor="#7a7a7a"
+        placeholderTextColor="#888"
         secureTextEntry={!isVisible}
         value={value}
         onChangeText={onChangeText}
@@ -125,8 +144,8 @@ export default function Login() {
       <TouchableOpacity onPress={toggleVisibility} style={styles.eyeIcon}>
         <Ionicons
           name={isVisible ? 'eye-outline' : 'eye-off-outline'}
-          size={24}
-          color="#7a7a7a"
+          size={22}
+          color="#888"
         />
       </TouchableOpacity>
     </View>
@@ -135,23 +154,21 @@ export default function Login() {
   return (
     <ImageBackground source={bgImage} style={styles.background}>
       <View style={styles.overlay}>
-        <SafeAreaView style={styles.safeArea}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-          >
-            
-            {/* LOGO E TÍTULO PRINCIPAL */}
+        
+        {/* CONTAINER PRINCIPAL RESPONSIVO */}
+        <View style={[styles.mainWrapper, isDesktop && styles.desktopCard]}>
+          
+          {/* SESSÃO SUPERIOR: LOGO E FORMULÁRIO */}
+          <View style={[styles.topSection, isDesktop && { paddingHorizontal: 40 }]}>
             <View style={styles.logoContainer}>
               <Image source={require('../assets/icon.png')} style={styles.logo} />
-              <Text style={styles.logoText}>W3LabsAGRO</Text>
+              <Text style={styles.logoText}>AgroFrank</Text>
             </View>
 
-            {/* CONTEÚDO PRINCIPAL (Muda com base na aba ativa) */}
             <View style={styles.formContainer}>
               {activeTab === 'forgot' && (
                 <TouchableOpacity style={styles.backButton} onPress={() => setActiveTab('login')}>
-                  <Ionicons name="arrow-back-outline" size={28} color="#fff" />
+                  <Ionicons name="arrow-back-outline" size={24} color="#fff" />
                 </TouchableOpacity>
               )}
 
@@ -163,39 +180,36 @@ export default function Login() {
 
               {activeTab === 'forgot' && (
                 <Text style={styles.subHeaderText}>
-                  Coloque seu email para recuperação da senha
+                  Insira seu email abaixo para receber o link de recuperação.
                 </Text>
               )}
 
-              {/* NOME (Apenas Cadastro) */}
               {activeTab === 'register' && (
                 <TextInput
                   style={styles.input}
                   placeholder="Nome"
-                  placeholderTextColor="#7a7a7a"
+                  placeholderTextColor="#888"
                   value={name}
                   onChangeText={setName}
+                  autoCapitalize="words"
                 />
               )}
 
-              {/* EMAIL (Todas as abas) */}
               <TextInput
                 style={styles.input}
                 placeholder="Email"
-                placeholderTextColor="#7a7a7a"
+                placeholderTextColor="#888"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={email}
                 onChangeText={setEmail}
               />
 
-              {/* SENHA (Login e Cadastro) */}
               {activeTab !== 'forgot' &&
                 renderPasswordInput('Senha', password, setPassword, showPassword, () =>
                   setShowPassword(!showPassword)
                 )}
 
-              {/* CONFIRMAR SENHA (Apenas Cadastro) */}
               {activeTab === 'register' &&
                 renderPasswordInput(
                   'Confirmar a Senha',
@@ -205,22 +219,17 @@ export default function Login() {
                   () => setShowConfirmPassword(!showConfirmPassword)
                 )}
 
-              {/* ESQUECEU A SENHA (Apenas Login) */}
               {activeTab === 'login' && (
                 <TouchableOpacity onPress={() => setActiveTab('forgot')}>
                   <Text style={styles.forgotPasswordText}>Esqueceu sua Senha?</Text>
                 </TouchableOpacity>
               )}
 
-              {/* BOTÃO DE AÇÃO */}
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={
-                  activeTab === 'register'
-                    ? handleRegister
-                    : activeTab === 'login'
-                    ? handleLogin
-                    : handleResetPassword
+                  activeTab === 'register' ? handleRegister :
+                  activeTab === 'login' ? handleLogin : handleResetPassword
                 }
                 disabled={loading}
               >
@@ -235,169 +244,215 @@ export default function Login() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
 
-            {/* TAB BAR INFERIOR (Oculto na tela de recuperar senha) */}
-            {activeTab !== 'forgot' && (
-              <View style={styles.tabBarContainer}>
-                <TouchableOpacity
-                  style={[styles.tabButton, activeTab === 'register' && styles.tabButtonActive]}
-                  onPress={() => setActiveTab('register')}
-                >
-                  <Text
-                    style={[styles.tabButtonText, activeTab === 'register' && styles.tabButtonTextActive]}
-                  >
-                    Criar Conta
-                  </Text>
-                </TouchableOpacity>
+          {/* SESSÃO INFERIOR: TAB BAR */}
+          {activeTab !== 'forgot' && (
+            <View style={[styles.tabBarContainer, isDesktop && { marginHorizontal: 40, marginBottom: 40 }]}>
+              <TouchableOpacity
+                style={[styles.tabButton, activeTab === 'register' && styles.tabButtonActive]}
+                onPress={() => {
+                  setActiveTab('register');
+                  setPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                <Text style={[styles.tabButtonText, activeTab === 'register' && styles.tabButtonTextActive]}>
+                  Criar Conta
+                </Text>
+              </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.tabButton, activeTab === 'login' && styles.tabButtonActive]}
-                  onPress={() => setActiveTab('login')}
-                >
-                  <Text
-                    style={[styles.tabButtonText, activeTab === 'login' && styles.tabButtonTextActive]}
-                  >
-                    Entrar
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              <View style={styles.tabSeparator} />
 
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+              <TouchableOpacity
+                style={[styles.tabButton, activeTab === 'login' && styles.tabButtonActive]}
+                onPress={() => {
+                  setActiveTab('login');
+                  setPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                <Text style={[styles.tabButtonText, activeTab === 'login' && styles.tabButtonTextActive]}>
+                  Entrar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+        </View>
+
       </View>
     </ImageBackground>
   );
 }
 
+// ==========================================
+// ESTILOS ADAPTADOS (EXCLUSIVO WEB)
+// ==========================================
 const styles = StyleSheet.create({
   background: {
     flex: 1,
     width: '100%',
+    height: '100vh', // Garante altura total na web
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)', // Escurece o fundo de folhas para destacar o formulário
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', // Centraliza conteúdo no Desktop
   },
-  safeArea: {
-    flex: 1,
-  },
-  container: {
+  mainWrapper: {
     flex: 1,
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
+    width: '100%',
+  },
+  // Classe específica para o visual do navegador/desktop
+  desktopCard: {
+    maxWidth: 450,
+    maxHeight: 700,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)', // Fundo translúcido para o Card
+    alignSelf: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
     paddingVertical: 20,
+    marginVertical: 'auto',
+    boxShadow: '0 10px 20px rgba(0,0,0,0.3)', // Usa boxShadow nativo da web
+    flex: undefined, 
+  },
+  topSection: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 30,
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 40,
+    marginBottom: 40,
   },
   logo: {
-    width: 50,
-    height: 50,
+    width: 60,
+    height: 60,
     resizeMode: 'contain',
+    tintColor: '#fff',
   },
   logoText: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  formContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    maxWidth: 500,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  backButton: {
-    marginBottom: 20,
-    alignSelf: 'flex-start',
-  },
-  headerText: {
     fontSize: 24,
     color: '#fff',
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
+  formContainer: {
+    width: '100%',
+  },
+  backButton: {
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+    outlineStyle: 'none',
+    cursor: 'pointer',
+  },
+  headerText: {
+    fontSize: 26,
+    color: '#fff',
+    fontWeight: 'bold',
+    marginBottom: 24,
     textAlign: 'center',
   },
   subHeaderText: {
-    fontSize: 14,
+    fontSize: 18,
     color: '#fff',
     marginBottom: 20,
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#E8E8E8',
     borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    height: 60,
+    fontSize: 18,
     color: '#333',
-    marginBottom: 16,
+    marginBottom: 12,
+    outlineStyle: 'none', // Remove borda de foco na Web
   },
   passwordContainer: {
     flexDirection: 'row',
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#E8E8E8',
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: 'center',
   },
   passwordInput: {
     flex: 1,
-    padding: 16,
-    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    height: 60,
+    fontSize: 18,
     color: '#333',
+    outlineStyle: 'none',
   },
   eyeIcon: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    outlineStyle: 'none',
+    cursor: 'pointer',
   },
   forgotPasswordText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 18,
     textAlign: 'right',
     marginBottom: 20,
-    textDecorationLine: 'underline',
+    outlineStyle: 'none',
+    cursor: 'pointer',
   },
   primaryButton: {
-    backgroundColor: '#5CB82E', // Verde da imagem
-    paddingVertical: 16,
+    backgroundColor: '#5CB82E',
+    paddingHorizontal: 32,
+    height: 60,
+    justifyContent: 'center',
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
-    maxWidth: 250,
-    width: '100%',
+    marginTop: 16,
     alignSelf: 'center',
+    minWidth: 180,
+    outlineStyle: 'none',
+    cursor: 'pointer',
   },
   primaryButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
   },
   tabBarContainer: {
     flexDirection: 'row',
-    backgroundColor: '#D1D1D1',
-    borderRadius: 30,
-    marginBottom: 20,
+    backgroundColor: 'rgba(232, 232, 232, 0.9)',
+    borderRadius: 12,
+    marginHorizontal: 30,
+    marginBottom: 30,
     overflow: 'hidden',
-    maxWidth: 400,
-    width: '100%',
-    alignSelf: 'center',
+    alignItems: 'center',
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    outlineStyle: 'none',
+    cursor: 'pointer',
   },
   tabButtonActive: {
-    backgroundColor: '#EAEAEA',
-    borderRadius: 30,
+    backgroundColor: 'transparent',
   },
   tabButtonText: {
-    fontSize: 14,
-    color: '#7a7a7a',
+    fontSize: 18,
+    color: '#888',
     fontWeight: '600',
   },
   tabButtonTextActive: {
-    color: '#333',
+    color: '#111',
+    fontWeight: 'bold',
+  },
+  tabSeparator: {
+    width: 1,
+    height: '50%',
+    backgroundColor: '#C4C4C4',
   },
 });

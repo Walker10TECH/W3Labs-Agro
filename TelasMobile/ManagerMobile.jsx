@@ -2,9 +2,9 @@
 // Manager.jsx
 //
 // Módulo de Gerenciamento (Propriedades, Unidades, Inventário e Estoque).
-// Totalmente integrado ao Firestore e com o Design Padrão W3Labs.
+// Totalmente integrado ao Firestore e com o Design Padrão W3Labs otimizado para Mobile.
 // -----------------------------------------------------------------------------
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     StyleSheet,
     Text,
@@ -18,40 +18,45 @@ import {
     Platform,
     ActivityIndicator,
     Alert,
-    Switch
+    Switch,
+    LayoutAnimation,
+    UIManager
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 // Certifique-se de que auth e db estão corretamente exportados do seu firebaseConfig
-import { auth, db } from '../firebaseConfig'; 
+import { auth, db } from '../firebaseConfig';
 
 // =====================================================================
 // 1️⃣ CONFIGURAÇÕES, CONSTANTES E TEMA
 // =====================================================================
 
 const THEME = {
-    primary: '#6DB33F',       // Verde vibrante
-    primaryDark: '#5A9634',   // Verde escuro
+    primary: '#4CAF50',
+    primaryDark: '#388E3C',
     secondary: '#FFFFFF',     // Branco
-    background: '#F4F6F4',    // Fundo cinza bem claro
+    background: '#F9FBF9',    // Fundo cinza bem claro
     textBlack: '#2C3329',     // Texto escuro
     textWhite: '#FFFFFF',     // Texto branco
-    secondaryText: '#7A8078', // Cinza para subtítulos
-    grayInput: '#EEF0EE',     // Fundo dos inputs
-    error: '#D32F2F',         // Vermelho para erros
+    secondaryText: '#4A4A4A', // Cinza para subtítulos
+    grayInput: '#F0F4F1',     // Fundo dos inputs
+    error: '#E53935',         // Vermelho para erros
 };
 
-const CONTAINS_ONLY_NUMBERS_REGEX = /^\d+$/;
-
 const agriculturalBrands = [
-    { label: 'John Deere', value: 'John Deere' }, 
-    { label: 'Case IH', value: 'Case IH' }, 
-    { label: 'New Holland', value: 'New Holland' }, 
-    { label: 'Massey Ferguson', value: 'Massey Ferguson' }, 
-    { label: 'Valtra', value: 'Valtra' },  
-    { label: 'Stara', value: 'Stara' }, 
-    { label: 'Jacto', value: 'Jacto' }, 
+    { label: 'John Deere', value: 'John Deere' },
+    { label: 'Case IH', value: 'Case IH' },
+    { label: 'New Holland', value: 'New Holland' },
+    { label: 'Massey Ferguson', value: 'Massey Ferguson' },
+    { label: 'Valtra', value: 'Valtra' },
+    { label: 'Stara', value: 'Stara' },
+    { label: 'Jacto', value: 'Jacto' },
     { label: 'Outra', value: 'Outra' },
 ];
 
@@ -141,17 +146,32 @@ const FormSelect = ({ label, placeholder, value, onValueChange, items, required,
     );
 };
 
-const FormDate = ({ label, value }) => (
-    <View style={styles.inputContainer}>
-        <Text style={styles.formLabel}>{label}</Text>
-        <TouchableOpacity style={styles.dateBox}>
-            <View style={styles.dateIconWrapper}>
-                <FontAwesome5 name="calendar-alt" size={20} color={THEME.textWhite} />
-            </View>
-            <Text style={styles.dateText}>{value}</Text>
-        </TouchableOpacity>
-    </View>
-);
+const FormDate = ({ label, value, onChange }) => {
+    const [show, setShow] = useState(false);
+    const dateValue = value instanceof Date && !isNaN(value) ? value : new Date();
+    return (
+        <View style={styles.inputContainer}>
+            <Text style={styles.formLabel}>{label}</Text>
+            <TouchableOpacity style={styles.dateBox} onPress={() => setShow(true)} activeOpacity={0.7}>
+                <View style={styles.dateIconWrapper}>
+                    <FontAwesome5 name="calendar-alt" size={24} color={THEME.textWhite} />
+                </View>
+                <Text style={styles.dateText}>{formatDate(dateValue)}</Text>
+            </TouchableOpacity>
+            {show && (
+                <DateTimePicker
+                    value={dateValue}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                        setShow(Platform.OS === 'ios');
+                        if (selectedDate && onChange) onChange(selectedDate);
+                    }}
+                />
+            )}
+        </View>
+    );
+};
 
 const ChoiceChips = ({ options, selectedValue, onValueChange }) => (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
@@ -237,22 +257,18 @@ const AddOrEditPropriedadeModal = ({ itemId, onClose }) => {
         setSaving(false);
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'propriedades', itemId));
-            onClose();
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja excluir esta propriedade?')) {
-                deleteAction();
+    const handleDelete = () => {
+        Alert.alert('Excluir', 'Deseja excluir esta propriedade?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Excluir',
+                style: 'destructive',
+                onPress: async () => {
+                    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'propriedades', itemId));
+                    onClose();
+                }
             }
-        } else {
-            Alert.alert('Excluir', 'Deseja excluir esta propriedade?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Excluir', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading) return <View style={styles.modalOverlay}><ActivityIndicator size="large" color={THEME.primary} /></View>;
@@ -266,7 +282,7 @@ const AddOrEditPropriedadeModal = ({ itemId, onClose }) => {
                         <TouchableOpacity style={styles.closeButton} onPress={onClose}><Ionicons name="close" size={20} /></TouchableOpacity>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <ChoiceChips 
+                        <ChoiceChips
                             options={[{ label: 'Própria', value: 'propria' }, { label: 'Arrendada', value: 'arrendada' }]}
                             selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
                         />
@@ -274,12 +290,12 @@ const AddOrEditPropriedadeModal = ({ itemId, onClose }) => {
                         <FormInput label="Proprietário" required value={data.proprietario} onChangeText={v => setField('proprietario', v)} error={errors.proprietario} />
                         <FormInput label="Área Total (ha)" keyboardType="numeric" value={data.area} onChangeText={v => setField('area', v, 'numeric')} />
                         <FormInput label="Área Mecanizada (ha)" keyboardType="numeric" value={data.areaMecanizada} onChangeText={v => setField('areaMecanizada', v, 'numeric')} />
-                        
+
                         {data.tipo === 'arrendada' && (
                             <>
                                 <FormInput label="Valor Arrendamento (R$)" keyboardType="numeric" value={data.valorArrendamento} onChangeText={v => setField('valorArrendamento', v, 'numeric')} />
-                                <FormDate label="Início do Contrato" value={formatDate(data.inicioContrato)} />
-                                <FormDate label="Fim do Contrato" value={formatDate(data.fimContrato)} />
+                                <FormDate label="Início do Contrato" value={data.inicioContrato} onChange={d => setField('inicioContrato', d, 'date')} />
+                                <FormDate label="Fim do Contrato" value={data.fimContrato} onChange={d => setField('fimContrato', d, 'date')} />
                             </>
                         )}
                         <FormInput label="Observações" value={data.observacoes} onChangeText={v => setField('observacoes', v)} multiline />
@@ -302,6 +318,10 @@ const AddOrEditUnidadeModal = ({ itemId, onClose }) => {
     const [errors, setErrors] = useState({});
     const [data, setData] = useState({ nome: '', tipo: 'Cooperativa', contato: '', telefone: '', email: '', cnpj: '', observacoes: '' });
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     useEffect(() => {
         if (!itemId) return;
         (async () => {
@@ -309,7 +329,7 @@ const AddOrEditUnidadeModal = ({ itemId, onClose }) => {
             try {
                 const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'unidades', itemId));
                 if (docSnap.exists()) setData(docSnap.data());
-            } catch (e) {} setLoading(false);
+            } catch (e) { } setLoading(false);
         })();
     }, [itemId]);
 
@@ -323,25 +343,21 @@ const AddOrEditUnidadeModal = ({ itemId, onClose }) => {
             const id = itemId || doc(collection(db, 'users', uid, 'unidades')).id;
             await setDoc(doc(db, 'users', uid, 'unidades', id), { ...data, id }, { merge: true });
             onClose();
-        } catch (e) {} setSaving(false);
+        } catch (e) { } setSaving(false);
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'unidades', itemId));
-            onClose();
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja excluir esta unidade?')) {
-                deleteAction();
+    const handleDelete = () => {
+        Alert.alert('Excluir', 'Deseja excluir esta unidade?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Excluir',
+                style: 'destructive',
+                onPress: async () => {
+                    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'unidades', itemId));
+                    onClose();
+                }
             }
-        } else {
-            Alert.alert('Excluir', 'Deseja excluir esta unidade?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Excluir', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading) return <View style={styles.modalOverlay}><ActivityIndicator size="large" color={THEME.primary} /></View>;
@@ -355,7 +371,7 @@ const AddOrEditUnidadeModal = ({ itemId, onClose }) => {
                         <TouchableOpacity style={styles.closeButton} onPress={onClose}><Ionicons name="close" size={20} /></TouchableOpacity>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <ChoiceChips 
+                        <ChoiceChips
                             options={[{ label: 'Coop', value: 'Cooperativa' }, { label: 'Fornecedor', value: 'Fornecedor' }, { label: 'Cliente', value: 'Cliente' }, { label: 'Outro', value: 'Outro' }]}
                             selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
                         />
@@ -405,7 +421,7 @@ const AddOrEditEquipamentoModal = ({ itemId, onClose }) => {
                     if (agriculturalBrands.some(b => b.value === item.marca)) setSelectedBrand(item.marca);
                     else setSelectedBrand('Outra');
                 }
-            } catch (e) {} setLoading(false);
+            } catch (e) { } setLoading(false);
         })();
     }, [itemId]);
 
@@ -424,25 +440,21 @@ const AddOrEditEquipamentoModal = ({ itemId, onClose }) => {
             };
             await setDoc(doc(db, 'users', uid, 'inventario', id), payload, { merge: true });
             onClose();
-        } catch (e) {} setSaving(false);
+        } catch (e) { } setSaving(false);
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'inventario', itemId));
-            onClose();
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja excluir este equipamento?')) {
-                deleteAction();
+    const handleDelete = () => {
+        Alert.alert('Excluir', 'Deseja excluir este equipamento?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Excluir',
+                style: 'destructive',
+                onPress: async () => {
+                    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'inventario', itemId));
+                    onClose();
+                }
             }
-        } else {
-            Alert.alert('Excluir', 'Deseja excluir este equipamento?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Excluir', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading) return <View style={styles.modalOverlay}><ActivityIndicator size="large" color={THEME.primary} /></View>;
@@ -456,22 +468,22 @@ const AddOrEditEquipamentoModal = ({ itemId, onClose }) => {
                         <TouchableOpacity style={styles.closeButton} onPress={onClose}><Ionicons name="close" size={20} /></TouchableOpacity>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <ChoiceChips 
+                        <ChoiceChips
                             options={[{ label: 'Trator', value: 'Trator' }, { label: 'Colheitadeira', value: 'Colheitadeira' }, { label: 'Pulverizador', value: 'Pulverizador' }, { label: 'Outro', value: 'Outro' }]}
                             selectedValue={data.tipoEquipamento} onValueChange={v => setField('tipoEquipamento', v)}
                         />
-                        <FormSelect 
-                            label="Marca Padrão" placeholder="Selecione" 
-                            items={agriculturalBrands} value={selectedBrand} 
-                            onValueChange={v => { setSelectedBrand(v); setField('marca', v === 'Outra' ? '' : v); }} 
+                        <FormSelect
+                            label="Marca Padrão" placeholder="Selecione"
+                            items={agriculturalBrands} value={selectedBrand}
+                            onValueChange={v => { setSelectedBrand(v); setField('marca', v === 'Outra' ? '' : v); }}
                         />
                         {selectedBrand === 'Outra' && <FormInput label="Especifique a Marca" required value={data.marca} onChangeText={v => setField('marca', v)} />}
-                        
+
                         <FormInput label="Modelo" required value={data.modelo} onChangeText={v => setField('modelo', v)} />
                         <FormInput label="Ano" keyboardType="numeric" maxLength={4} value={data.ano} onChangeText={v => setField('ano', v)} />
                         <FormInput label="Número Chassi" value={data.nrChassi} onChangeText={v => setField('nrChassi', v)} />
                         <FormInput label="Valor (R$)" keyboardType="numeric" value={data.valor} onChangeText={v => setField('valor', v)} />
-                        
+
                         {/* Switches Customizados */}
                         <View style={styles.switchBox}>
                             <Text style={styles.switchLabel}>Status Ativo</Text>
@@ -481,9 +493,9 @@ const AddOrEditEquipamentoModal = ({ itemId, onClose }) => {
                             <Text style={styles.switchLabel}>Requer Combustível</Text>
                             <Switch trackColor={{ false: "#d3d3d3", true: THEME.primary }} thumbColor="#FFF" onValueChange={() => setField('combustaoAtiva', !data.combustaoAtiva)} value={data.combustaoAtiva} />
                         </View>
-                        
+
                         {data.combustaoAtiva && (
-                            <ChoiceChips 
+                            <ChoiceChips
                                 options={[{ label: 'Diesel S10', value: 'Diesel S10' }, { label: 'Diesel S500', value: 'Diesel S500' }, { label: 'Gasolina', value: 'Gasolina' }]}
                                 selectedValue={data.tipoCombustivel} onValueChange={v => setField('tipoCombustivel', v)}
                             />
@@ -517,7 +529,7 @@ const AddOrEditEstoqueGeralModal = ({ itemId, onClose }) => {
                     const item = docSnap.data();
                     setData({ ...item, quantidade: item.quantidade ? String(item.quantidade) : '' });
                 }
-            } catch (e) {} setLoading(false);
+            } catch (e) { } setLoading(false);
         })();
     }, [itemId]);
 
@@ -529,29 +541,25 @@ const AddOrEditEstoqueGeralModal = ({ itemId, onClose }) => {
         try {
             const uid = auth.currentUser.uid;
             const id = itemId || doc(collection(db, 'users', uid, 'estoqueGeral')).id;
-            await setDoc(doc(db, 'users', uid, 'estoqueGeral', id), { 
-                ...data, id, quantidade: parseFloat(String(data.quantidade).replace(',', '.')) || 0 
+            await setDoc(doc(db, 'users', uid, 'estoqueGeral', id), {
+                ...data, id, quantidade: parseFloat(String(data.quantidade).replace(',', '.')) || 0
             }, { merge: true });
             onClose();
-        } catch (e) {} setSaving(false);
+        } catch (e) { } setSaving(false);
     };
 
-    const handleDelete = async () => {
-        const deleteAction = async () => {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'estoqueGeral', itemId));
-            onClose();
-        };
-
-        if (Platform.OS === 'web') {
-            if (window.confirm('Deseja excluir este item do estoque?')) {
-                deleteAction();
+    const handleDelete = () => {
+        Alert.alert('Excluir', 'Deseja excluir este item do estoque?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Excluir',
+                style: 'destructive',
+                onPress: async () => {
+                    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'estoqueGeral', itemId));
+                    onClose();
+                }
             }
-        } else {
-            Alert.alert('Excluir', 'Deseja excluir este item do estoque?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Excluir', style: 'destructive', onPress: deleteAction }
-            ]);
-        }
+        ]);
     };
 
     if (loading) return <View style={styles.modalOverlay}><ActivityIndicator size="large" color={THEME.primary} /></View>;
@@ -565,7 +573,7 @@ const AddOrEditEstoqueGeralModal = ({ itemId, onClose }) => {
                         <TouchableOpacity style={styles.closeButton} onPress={onClose}><Ionicons name="close" size={20} /></TouchableOpacity>
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        <ChoiceChips 
+                        <ChoiceChips
                             options={[{ label: 'Semente', value: 'Semente' }, { label: 'Fertilizante', value: 'Fertilizante' }, { label: 'Defensivo', value: 'Defensivo' }, { label: 'Peça', value: 'Peça' }]}
                             selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
                         />
@@ -601,6 +609,7 @@ const ListScreen = ({ title, collectionName, icon, renderSubtitle, onBack }) => 
         const q = collection(db, 'users', auth.currentUser.uid, collectionName);
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => doc.data());
+            triggerAnimation();
             setItems(data);
             setLoading(false);
         });
@@ -609,31 +618,33 @@ const ListScreen = ({ title, collectionName, icon, renderSubtitle, onBack }) => 
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title={title} onBack={onBack} />
             <ScrollView contentContainerStyle={styles.listContainer}>
                 {loading ? <ActivityIndicator size="large" color={THEME.primary} style={{ marginTop: 50 }} />
-                : items.length === 0 ? <Text style={styles.emptyText}>Nenhum registro encontrado.</Text>
-                : items.map(item => (
-                    <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => setModal({ visible: true, itemId: item.id })}>
-                        <View style={styles.listIconBox}>
-                            <MaterialCommunityIcons name={icon} size={24} color={THEME.primary} />
-                        </View>
-                        <View style={styles.listContent}>
-                            <Text style={styles.listTitle}>{item.nome || item.marca || 'Sem título'}</Text>
-                            <Text style={styles.listSubtitle}>{renderSubtitle(item)}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
-                    </TouchableOpacity>
-                ))}
+                    : items.length === 0 ? <Text style={styles.emptyText}>Nenhum registro encontrado.</Text>
+                        : items.map(item => (
+                            <TouchableOpacity key={item.id} style={styles.listItem} onPress={() => { triggerAnimation(); setModal({ visible: true, itemId: item.id }); }}>
+                                <View style={styles.listIconBox}>
+                                    <MaterialCommunityIcons name={icon} size={24} color={THEME.primary} />
+                                </View>
+                                <View style={styles.listContent}>
+                                    <Text style={styles.listTitle}>{item.nome || item.marca || 'Sem título'}</Text>
+                                    <Text style={styles.listSubtitle}>{renderSubtitle(item)}</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
+                            </TouchableOpacity>
+                        ))}
             </ScrollView>
-            
-            <FabAdd onAdd={() => setModal({ visible: true, itemId: null })} />
+
+            <FabAdd onAdd={() => { triggerAnimation(); setModal({ visible: true, itemId: null }); }} />
 
             {/* Injeta o Modal correto dinamicamente */}
             {modal.visible && collectionName === 'propriedades' && <AddOrEditPropriedadeModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
             {modal.visible && collectionName === 'unidades' && <AddOrEditUnidadeModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
             {modal.visible && collectionName === 'inventario' && <AddOrEditEquipamentoModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
             {modal.visible && collectionName === 'estoqueGeral' && <AddOrEditEstoqueGeralModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
+            </View>
         </SafeAreaView>
     );
 };
@@ -646,11 +657,18 @@ export default function Manager({ navigation, route }) {
     const initialView = route?.params?.initialView || 'menu';
     const [currentView, setCurrentView] = useState(initialView);
 
+    const triggerAnimation = () => {
+        if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    };
+
     // Se a tela foi aberta diretamente em uma lista, o botão "voltar" deve retornar à tela anterior (Dashboard).
     // Caso contrário, ele volta para o menu do Gerenciador.
     const handleBack = initialView !== 'menu'
         ? () => navigation.goBack()
-        : () => setCurrentView('menu');
+        : () => {
+            triggerAnimation();
+            setCurrentView('menu');
+        };
 
     // Roteador Interno Simples
     if (currentView === 'propriedades') return <ListScreen title="Propriedades" collectionName="propriedades" icon="barn" renderSubtitle={i => `${i.proprietario} • ${i.tipo === 'propria' ? 'Própria' : 'Arrendada'}`} onBack={handleBack} />;
@@ -662,15 +680,16 @@ export default function Manager({ navigation, route }) {
         { title: 'Propriedades', icon: 'barn', view: 'propriedades', desc: 'Gerir propriedades rurais' },
         { title: 'Unidades / Empresas', icon: 'office-building', view: 'unidades', desc: 'Cooperativas, fornecedores e clientes' },
         { title: 'Inventário de Equipamentos', icon: 'tractor-variant', view: 'inventario', desc: 'Tratores, implementos e máquinas' },
-        { title: 'Stock Geral', icon: 'archive-outline', view: 'estoque', desc: 'Sementes, fertilizantes e defensivos' }
+        { title: 'Estoque Geral', icon: 'archive-outline', view: 'estoque', desc: 'Sementes, fertilizantes e defensivos' }
     ];
 
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.webContainer}>
             <CustomHeader title="Gerenciador" onBack={() => navigation.goBack()} />
             <ScrollView contentContainerStyle={{ padding: 20 }}>
                 {menuOptions.map((opt, i) => (
-                    <TouchableOpacity key={i} style={styles.managerButton} onPress={() => setCurrentView(opt.view)}>
+                    <TouchableOpacity key={i} style={styles.managerButton} onPress={() => { triggerAnimation(); setCurrentView(opt.view); }}>
                         <View style={styles.managerButtonIcon}>
                             <MaterialCommunityIcons name={opt.icon} size={28} color={THEME.textWhite} />
                         </View>
@@ -682,6 +701,7 @@ export default function Manager({ navigation, route }) {
                     </TouchableOpacity>
                 ))}
             </ScrollView>
+            </View>
         </SafeAreaView>
     );
 }
@@ -692,66 +712,72 @@ export default function Manager({ navigation, route }) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
+    webContainer: {
+        flex: 1,
+        width: '100%',
+        maxWidth: 800,
+        alignSelf: 'center',
+    },
     // Header
     header: { backgroundColor: THEME.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60, ...Platform.select({ android: { marginTop: 24 } }) },
     backButton: { padding: 5 },
-    headerTitle: { color: THEME.textWhite, fontSize: 18, fontWeight: 'bold' },
-    
+    headerTitle: { color: THEME.textWhite, fontSize: 22, fontWeight: 'bold' },
+
     // Manager Menu
-    managerButton: { flexDirection: 'row', backgroundColor: THEME.secondary, padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 3 },
+    managerButton: { flexDirection: 'row', backgroundColor: THEME.secondary, padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 15, ...Platform.select({ web: { boxShadow: '0px 2px 3px rgba(0,0,0,0.05)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3 } }), elevation: 3 },
     managerButtonIcon: { backgroundColor: THEME.primary, padding: 12, borderRadius: 12 },
-    managerButtonTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    managerButtonDesc: { fontSize: 13, color: THEME.secondaryText },
-    
+    managerButtonTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
+    managerButtonDesc: { fontSize: 16, color: THEME.secondaryText },
+
     // Lists
     listContainer: { padding: 15, alignItems: 'center', flexGrow: 1 },
-    emptyText: { color: THEME.secondaryText, fontSize: 14, marginTop: 40 },
-    listItem: { flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: 600, padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+    emptyText: { color: THEME.secondaryText, fontSize: 18, marginTop: 40 },
+    listItem: { flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, ...Platform.select({ web: { boxShadow: '0px 2px 3px rgba(0,0,0,0.05)' }, default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3 } }), elevation: 2 },
     listIconBox: { width: 50, height: 50, backgroundColor: THEME.grayInput, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
     listContent: { flex: 1 },
-    listTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    listSubtitle: { fontSize: 13, color: THEME.secondaryText },
-    
+    listTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
+    listSubtitle: { fontSize: 16, color: THEME.secondaryText },
+
     // FAB
     fabContainer: { position: 'absolute', right: 20, bottom: 30, alignItems: 'center' },
     fabAdd: { backgroundColor: THEME.primary, width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 5 },
-    
+
     // Modals & Forms
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 20 },
-    modalContent: { backgroundColor: THEME.secondary, borderRadius: 15, padding: 20, maxHeight: '90%', width: '100%', maxWidth: 600, alignSelf: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%', width: '100%' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', color: THEME.textBlack },
+    modalTitle: { fontSize: 24, fontWeight: 'bold', color: THEME.textBlack },
     closeButton: { backgroundColor: THEME.grayInput, padding: 6, borderRadius: 8 },
     inputContainer: { marginBottom: 15 },
-    formLabel: { fontSize: 12, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: THEME.textBlack },
+    formLabel: { fontSize: 16, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
+    input: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, height: 60, fontSize: 18, color: THEME.textBlack },
     errorText: { color: THEME.error, fontSize: 11, marginTop: 4 },
-    
+
     // Select
-    selectBox: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    selectText: { fontSize: 14, color: THEME.textBlack },
+    selectBox: { backgroundColor: THEME.grayInput, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 14, height: 60, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    selectText: { fontSize: 18, color: THEME.textBlack },
     selectModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    selectModalContent: { backgroundColor: THEME.secondary, width: '100%', maxWidth: 400, borderRadius: 15, padding: 20 },
-    selectModalTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: THEME.textBlack, textAlign: 'center' },
+    selectModalContent: { backgroundColor: THEME.secondary, width: '100%', borderRadius: 15, padding: 20 },
+    selectModalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, color: THEME.textBlack, textAlign: 'center' },
     selectModalItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: THEME.grayInput },
-    selectModalItemText: { fontSize: 16, color: THEME.textBlack },
-    
+    selectModalItemText: { fontSize: 18, color: THEME.textBlack },
+
     // Date & Switch
-    dateBox: { backgroundColor: THEME.grayInput, borderRadius: 8, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
+    dateBox: { backgroundColor: THEME.grayInput, borderRadius: 8, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', height: 60 },
     dateIconWrapper: { backgroundColor: THEME.primary, paddingVertical: 12, paddingHorizontal: 15, justifyContent: 'center', alignItems: 'center' },
-    dateText: { fontSize: 14, color: THEME.textBlack, marginLeft: 15 },
+    dateText: { fontSize: 18, color: THEME.textBlack, marginLeft: 15 },
     switchBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: THEME.grayInput, padding: 15, borderRadius: 8, marginBottom: 15 },
-    switchLabel: { fontSize: 14, color: THEME.textBlack, fontWeight: '500' },
-    
+    switchLabel: { fontSize: 18, color: THEME.textBlack, fontWeight: '500' },
+
     // Chips
     chipButton: { backgroundColor: THEME.grayInput, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginRight: 10 },
     chipButtonActive: { backgroundColor: THEME.primary },
-    chipText: { color: THEME.secondaryText, fontWeight: 'bold' },
+    chipText: { color: THEME.secondaryText, fontWeight: 'bold', fontSize: 16 },
     chipTextActive: { color: THEME.textWhite },
-    
+
     // Actions
-    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, paddingVertical: 15, alignItems: 'center', marginTop: 10, marginBottom: 10 },
-    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 16 },
-    deleteButton: { backgroundColor: 'transparent', borderWidth: 1, borderColor: THEME.error, borderRadius: 8, paddingVertical: 15, alignItems: 'center', marginBottom: 20 },
-    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 16 }
+    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, height: 60, justifyContent: 'center', alignItems: 'center', marginTop: 10, marginBottom: 10 },
+    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 20 },
+    deleteButton: { backgroundColor: 'transparent', borderWidth: 1, borderColor: THEME.error, borderRadius: 8, height: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 18 }
 });
