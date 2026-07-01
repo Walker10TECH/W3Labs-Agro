@@ -1,11 +1,3 @@
-// -----------------------------------------------------------------------------
-// Pulverizacao.jsx
-//
-// Módulo de Gestão de Pulverizações.
-// Adaptado EXCLUSIVAMENTE PARA WEB (Responsivo).
-// Integrado ao Firestore, com cálculo automático de doses e baixa de estoque atômica.
-// Design W3Labs - Clean Web UI
-// -----------------------------------------------------------------------------
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, doc, getDoc, getDocs, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
 
@@ -80,6 +72,10 @@ const Icons = {
 // 3️⃣ COMPONENTES DE UI REUTILIZÁVEIS
 // =====================================================================
 
+const Spinner = ({ primary }) => (
+    <div style={primary ? styles.spinnerPrimary : styles.spinner}></div>
+);
+
 const CustomHeader = ({ title, onBack }) => (
     <div style={styles.fullHeader}>
         <div style={styles.headerContent}>
@@ -105,7 +101,7 @@ const FabAdd = ({ onAdd }) => (
 const SectionHeader = ({ title, IconComponent }) => (
     <div style={styles.sectionHeader}>
         <IconComponent size={22} color={THEME.primary} />
-        <span style={{...styles.sectionTitle, marginLeft: '8px'}}>{title}</span>
+        <span style={{ ...styles.sectionTitle, marginLeft: '8px' }}>{title}</span>
     </div>
 );
 
@@ -146,7 +142,6 @@ const FormSelect = ({ label, placeholder, value, onValueChange, items, required,
 );
 
 const FormDate = ({ label, value, onChange }) => {
-    // Formata a data para YYYY-MM-DD (padrão do input type="date")
     const dateStr = value instanceof Date && !isNaN(value) ? value.toISOString().split('T')[0] : '';
     
     return (
@@ -158,7 +153,7 @@ const FormDate = ({ label, value, onChange }) => {
                 value={dateStr}
                 onChange={(e) => {
                     if (e.target.value) {
-                        onChange(new Date(`${e.target.value}T12:00:00`)); // Time neutro
+                        onChange(new Date(`${e.target.value}T12:00:00`));
                     }
                 }}
             />
@@ -167,16 +162,19 @@ const FormDate = ({ label, value, onChange }) => {
 };
 
 const ChoiceChips = ({ options, selectedValue, onValueChange }) => (
-    <div style={{ display: 'flex', overflowX: 'auto', marginBottom: '20px', paddingBottom: '5px' }}>
+    <div style={{ display: 'flex', overflowX: 'auto', marginBottom: '20px', paddingBottom: '5px', gap: '10px' }}>
         {options.map((opt, i) => {
             const isActive = selectedValue === opt.value;
             return (
                 <button 
                     key={i} 
-                    style={{ ...styles.chipButton, ...(isActive ? styles.chipButtonActive : {}) }} 
+                    style={{ ...styles.chipButton, ...(isActive ? styles.chipButtonActive : {}) }}
                     onClick={() => onValueChange(opt.value)}
+                    type="button"
                 >
-                    <span style={{ ...styles.chipText, ...(isActive ? styles.chipTextActive : {}) }}>{opt.label}</span>
+                    <span style={{ ...styles.chipText, ...(isActive ? styles.chipTextActive : {}) }}>
+                        {opt.label}
+                    </span>
                 </button>
             );
         })}
@@ -203,7 +201,6 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
         temperatura: '', umidade: '', velocidadeVento: ''
     });
 
-    // Buscar Dependências
     useEffect(() => {
         const fetchDependencies = async () => {
             setLoadingDependencies(true);
@@ -229,7 +226,6 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
         fetchDependencies();
     }, []);
 
-    // Buscar Item para Edição
     useEffect(() => {
         if (itemId) {
             setLoading(true);
@@ -253,7 +249,7 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
                         });
                         setOriginalItem(item);
                     } else {
-                        window.alert("Erro: Registro não encontrado.");
+                        alert("Registro não encontrado.");
                         onClose();
                     }
                 } catch (error) {
@@ -266,7 +262,6 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
         }
     }, [itemId, onClose]);
 
-    // Cálculo Automático de Quantidade Utilizada
     useEffect(() => {
         if (!loading) {
             const area = parseMoeda(data.areaTalhao);
@@ -308,7 +303,7 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
     }, [data, defensivosEmEstoque, originalItem]);
 
     const onSave = async () => {
-        if (!validateForm()) return window.alert('Aviso: Verifique os campos destacados.');
+        if (!validateForm()) return alert('Verifique os campos destacados.');
         
         setSaving(true);
         const userUid = auth.currentUser?.uid;
@@ -322,7 +317,6 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
             const doseSalvar = parseMoeda(data.dose);
             const areaSalvar = parseMoeda(data.areaTalhao);
 
-            // --- GESTÃO DE ESTOQUE ---
             const stockChanges = new Map();
             if (originalItem?.estoqueItemId && originalItem.quantidadeUtilizada > 0) {
                 stockChanges.set(originalItem.estoqueItemId, (stockChanges.get(originalItem.estoqueItemId) || 0) + originalItem.quantidadeUtilizada);
@@ -344,7 +338,6 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
             const stockUpdates = (await Promise.all(stockUpdatePromises)).filter(Boolean);
             stockUpdates.forEach(({ ref, newQty }) => batch.update(ref, { quantidade: newQty }));
 
-            // --- SALVAR REGISTRO ---
             const docId = itemId || doc(collection(db, 'users', userUid, 'pulverizacoes')).id;
             const payload = {
                 id: docId,
@@ -373,7 +366,7 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
             onSaveSuccess();
 
         } catch (error) {
-            window.alert("Erro ao Salvar: " + error.message);
+            alert(error.message);
         } finally {
             setSaving(false);
         }
@@ -385,70 +378,69 @@ const AddOrEditPulverizacaoModal = ({ itemId, onClose, onSaveSuccess }) => {
                 await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'pulverizacoes', itemId));
                 onSaveSuccess();
             } catch (e) {
-                window.alert('Erro: Falha ao excluir.');
+                alert('Falha ao excluir.');
             }
         }
     };
-
     const defensivoSelecionado = defensivosEmEstoque.find(d => d.id === data.estoqueItemId);
 
     return (
-        <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="responsive-modal">
+                <div style={styles.bottomSheetHandleContainer}>
+                    <div style={styles.bottomSheetHandle} />
+                </div>
                 
                 <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? "Editar Aplicação" : "Nova Aplicação"}</span>
+                    <h2 style={styles.modalTitle}>{itemId ? "Editar Aplicação" : "Nova Aplicação"}</h2>
                     <button style={styles.closeButton} onClick={onClose}>
                         <Icons.Close size={24} color={THEME.textBlack} />
                     </button>
                 </div>
 
                 {loadingDependencies || loading ? (
-                     <div style={{ textAlign: 'center', padding: '40px 0', color: THEME.primary }}>Carregando...</div>
+                    <Spinner primary />
                 ) : (
-                    <div style={{ overflowY: 'auto', flex: 1, paddingBottom: '30px' }}>
-                        {/* OPERACIONAL */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                        
                         <SectionHeader title="Dados Operacionais" IconComponent={Icons.Clipboard} />
-                        <div style={styles.row}>
-                            <div style={{ flex: 1 }}>
+                        <div className="responsive-form-row">
+                            <div style={styles.flex1}>
                                 <FormSelect label="Status" items={[{label: 'Realizado', value: 'Realizado'}, {label: 'Planejado', value: 'Planejado'}]} value={data.status} onValueChange={v => setField('status', v)} />
                             </div>
-                            <div style={{ flex: 1, marginLeft: '12px' }}>
-                                <FormDate label="Data" value={data.dataAplicacao} onChange={d => setField('dataAplicacao', d)} />
+                            <div style={styles.flex1}>
+                                <FormDate label="Data" value={data.dataAplicacao} onChange={d => setField('dataAplicacao', d, 'date')} />
                             </div>
                         </div>
                         <FormInput label="Operador" value={data.operador} onChangeText={v => setField('operador', v)} placeholder="Nome do responsável" />
                         <FormSelect label="Equipamento" items={equipamentos.map(e => ({ label: `${e.marca} ${e.modelo}`, value: e.id }))} value={data.equipamentoId} onValueChange={v => setField('equipamentoId', v)} placeholder="Selecione o trator/pulverizador" />
 
-                        {/* AGRONÔMICO */}
                         <SectionHeader title="Local e Cultura" IconComponent={Icons.Sprout} />
                         <ChoiceChips options={[{label:'Herbicida', value:'Herbicida'}, {label:'Fungicida', value:'Fungicida'}, {label:'Inseticida', value:'Inseticida'}, {label:'Adubo Foliar', value:'Adubo'}]} selectedValue={data.tipoAplicacao} onValueChange={v => setField('tipoAplicacao', v)} />
-                        <div style={styles.row}>
-                            <div style={{ flex: 1 }}><FormInput label="Cultura *" value={data.cultura} onChangeText={v => setField('cultura', v)} error={errors.cultura} placeholder="Ex: Soja" /></div>
-                            <div style={{ flex: 1, marginLeft: '12px' }}><FormInput label="Talhão *" value={data.talhao} onChangeText={v => setField('talhao', v)} error={errors.talhao} placeholder="Ex: T-01" /></div>
+                        <div className="responsive-form-row">
+                            <div style={styles.flex1}><FormInput label="Cultura *" value={data.cultura} onChangeText={v => setField('cultura', v)} error={errors.cultura} placeholder="Ex: Soja" /></div>
+                            <div style={styles.flex1}><FormInput label="Talhão *" value={data.talhao} onChangeText={v => setField('talhao', v)} error={errors.talhao} placeholder="Ex: T-01" /></div>
                         </div>
-                        <FormInput label="Área Aplicada (ha)" value={data.areaTalhao} onChangeText={v => setField('areaTalhao', v, 'numeric')} type="number" placeholder="0,00" />
+                        <FormInput label="Área Aplicada (ha)" value={data.areaTalhao} onChangeText={v => setField('areaTalhao', v, 'numeric')} type="text" placeholder="0,00" />
 
-                        {/* PRODUTO */}
                         <SectionHeader title="Insumo e Dosagem" IconComponent={Icons.Flask} />
                         <FormSelect label="Produto do Estoque" items={defensivosEmEstoque.map(d => ({ label: `${d.nome} (Disp: ${d.quantidade} ${d.unidade})`, value: d.id }))} value={data.estoqueItemId} onValueChange={v => setField('estoqueItemId', v)} placeholder="Vincular ao estoque..." />
                         {!data.estoqueItemId && <FormInput label="Produto (Registro Manual)" value={data.produto} onChangeText={v => setField('produto', v)} error={errors.produto} placeholder="Nome do insumo" />}
                         
-                        <div style={styles.row}>
-                            <div style={{ flex: 1 }}><FormInput label={`Dose (${defensivoSelecionado?.unidade || 'L'}/ha)`} value={data.dose} onChangeText={v => setField('dose', v, 'numeric')} type="number" placeholder="0,00" /></div>
-                            <div style={{ flex: 1, marginLeft: '12px' }}><FormInput label="Total Utilizado *" value={data.quantidadeUtilizada} onChangeText={v => setField('quantidadeUtilizada', v, 'numeric')} type="number" error={errors.quantidadeUtilizada} placeholder="0,00" /></div>
+                        <div className="responsive-form-row">
+                            <div style={styles.flex1}><FormInput label={`Dose (${defensivoSelecionado?.unidade || 'L'}/ha)`} value={data.dose} onChangeText={v => setField('dose', v, 'numeric')} type="text" placeholder="0,00" /></div>
+                            <div style={styles.flex1}><FormInput label="Total Utilizado *" value={data.quantidadeUtilizada} onChangeText={v => setField('quantidadeUtilizada', v, 'numeric')} type="text" error={errors.quantidadeUtilizada} placeholder="0,00" /></div>
                         </div>
 
-                        {/* CLIMA */}
                         <SectionHeader title="Condições Climáticas" IconComponent={Icons.Cloud} />
-                        <div style={styles.row}>
-                            <div style={{ flex: 1 }}><FormInput label="Temp. (°C)" value={data.temperatura} onChangeText={v => setField('temperatura', v, 'numeric')} type="number" placeholder="0,0" /></div>
-                            <div style={{ flex: 1, margin: '0 12px' }}><FormInput label="Umid. (%)" value={data.umidade} onChangeText={v => setField('umidade', v, 'numeric')} type="number" placeholder="0,0" /></div>
-                            <div style={{ flex: 1 }}><FormInput label="Vento (km/h)" value={data.velocidadeVento} onChangeText={v => setField('velocidadeVento', v, 'numeric')} type="number" placeholder="0,0" /></div>
+                        <div className="responsive-form-row">
+                            <div style={styles.flex1}><FormInput label="Temp. (°C)" value={data.temperatura} onChangeText={v => setField('temperatura', v, 'numeric')} type="text" placeholder="0,0" /></div>
+                            <div style={styles.flex1}><FormInput label="Umid. (%)" value={data.umidade} onChangeText={v => setField('umidade', v, 'numeric')} type="text" placeholder="0,0" /></div>
+                            <div style={styles.flex1}><FormInput label="Vento (km/h)" value={data.velocidadeVento} onChangeText={v => setField('velocidadeVento', v, 'numeric')} type="text" placeholder="0,0" /></div>
                         </div>
 
                         <button style={styles.saveButton} onClick={onSave} disabled={saving}>
-                            <span style={styles.saveButtonText}>{saving ? 'Salvando...' : 'Confirmar Aplicação'}</span>
+                            {saving ? <Spinner /> : <span style={styles.saveButtonText}>Confirmar Aplicação</span>}
                         </button>
                         
                         {itemId && (
@@ -492,153 +484,215 @@ export default function PulverizacaoListaScreen({ navigation }) {
 
     return (
         <div style={styles.container}>
-            <CustomHeader title="Gestão de Pulverização" onBack={() => { /* Lógica de goBack para Web Router, se necessário */ }} />
-            <div style={styles.webContainer}>
-                
-                <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
-                    {loading ? (
-                        <div style={{ textAlign: 'center', marginTop: '50px', color: THEME.primary }}>Carregando...</div>
-                    ) : items.length === 0 ? (
-                        <div style={styles.emptyState}>
-                            <Icons.Spray size={64} color={THEME.border} />
-                            <div style={styles.emptyTextTitle}>Nenhuma aplicação</div>
-                            <div style={styles.emptyText}>Toque no botão + para registrar sua primeira pulverização ou adubação.</div>
-                        </div>
-                    ) : (
-                        <div style={{ paddingBottom: '100px' }}>
-                            {items.map(item => {
-                                const statusStyle = getStatusStyle(item.status);
-                                return (
-                                    <button 
-                                        key={item.id}
-                                        style={styles.listItem} 
-                                        onClick={() => setModal({ visible: true, itemId: item.id })}
-                                    >
-                                        <div style={{...styles.listIconBox, backgroundColor: `${THEME.primary}15` }}>
-                                            {item.tipoAplicacao === 'Adubo' ? 
-                                                <Icons.Leaf size={26} color={THEME.primary} /> : 
-                                                <Icons.Spray size={26} color={THEME.primary} />
-                                            }
+            <style>{`
+                .responsive-wrapper {
+                    width: 100%;
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    display: flex;
+                    flex-direction: column;
+                    position: relative;
+                }
+                .responsive-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 12px;
+                    padding: 16px;
+                    padding-bottom: 100px;
+                }
+                .responsive-modal {
+                    background-color: #FFFFFF;
+                    width: 100%;
+                    max-width: 100%;
+                    border-top-left-radius: 24px;
+                    border-top-right-radius: 24px;
+                    padding: 0 24px 24px 24px;
+                    max-height: 92vh;
+                    overflow-y: auto;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .responsive-form-row {
+                    display: flex;
+                    flex-direction: column;
+                }
+                @media (min-width: 768px) {
+                    .responsive-grid {
+                        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                    }
+                    .responsive-modal {
+                        max-width: 600px;
+                        border-radius: 24px;
+                        align-self: center;
+                        margin-bottom: 4vh;
+                    }
+                    .responsive-form-row {
+                        flex-direction: row;
+                        gap: 16px;
+                    }
+                    .responsive-form-row > * {
+                        flex: 1;
+                    }
+                }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
+            <div className="responsive-wrapper">
+                <CustomHeader title="Pulverização / Adubação" onBack={() => navigation?.goBack()} />
+            
+                {loading ? (
+                    <Spinner primary />
+                ) : items.length === 0 ? (
+                    <div style={styles.emptyState}>
+                        <Icons.Spray size={64} color={THEME.border} />
+                        <h3 style={styles.emptyTextTitle}>Nenhuma aplicação</h3>
+                        <p style={styles.emptyText}>Toque no botão + para registrar sua primeira pulverização ou adubação.</p>
+                    </div>
+                ) : (
+                    <div className="responsive-grid">
+                        {items.map((item) => {
+                            const statusStyle = getStatusStyle(item.status);
+                            return (
+                                <button 
+                                    key={item.id}
+                                    style={styles.listItem} 
+                                    onClick={() => setModal({ visible: true, itemId: item.id })}
+                                >
+                                    <div style={{ ...styles.listIconBox, backgroundColor: `${THEME.primary}15` }}>
+                                        {item.tipoAplicacao === 'Adubo' 
+                                            ? <Icons.Leaf size={26} color={THEME.primary} />
+                                            : <Icons.Spray size={26} color={THEME.primary} />
+                                        }
+                                    </div>
+                                    
+                                    <div style={styles.listContent}>
+                                        <div style={styles.listTitleRow}>
+                                            <span style={styles.listTitle} title={`${item.cultura} - ${item.talhao}`}>{item.cultura} - {item.talhao}</span>
+                                            <div style={{ ...styles.statusBadge, backgroundColor: statusStyle.bg }}>
+                                                <span style={{ ...styles.statusText, color: statusStyle.color }}>
+                                                    {item.status?.toUpperCase() || 'REALIZADO'}
+                                                </span>
+                                            </div>
                                         </div>
                                         
-                                        <div style={styles.listContent}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                                <span style={styles.listTitle} title={`${item.cultura} - ${item.talhao}`}>{item.cultura} - {item.talhao}</span>
-                                                <div style={{...styles.statusBadge, backgroundColor: statusStyle.bg }}>
-                                                    <span style={{...styles.statusText, color: statusStyle.color }}>
-                                                        {item.status?.toUpperCase() || 'REALIZADO'}
-                                                    </span>
-                                                </div>
+                                        <div style={styles.listSubtitle} title={`${item.produto} • ${item.quantidadeUtilizada} ${item.unidade || 'un'}`}>
+                                            <span style={{fontWeight: '600'}}>{item.produto}</span> • {item.quantidadeUtilizada} {item.unidade || 'un'}
+                                        </div>
+                                        
+                                        <div style={styles.listFooter}>
+                                            <div style={styles.footerIconRow}>
+                                                <Icons.Calendar size={14} color={THEME.secondaryText} />
+                                                <span style={styles.footerText}>{formatDate(item.dataAplicacao)}</span>
                                             </div>
-                                            
-                                            <div style={styles.listSubtitle} title={`${item.produto} • ${item.quantidadeUtilizada} ${item.unidade || 'un'}`}>
-                                                <span style={{fontWeight: '600'}}>{item.produto}</span> • {item.quantidadeUtilizada} {item.unidade || 'un'}
-                                            </div>
-                                            
-                                            <div style={styles.listFooter}>
+                                            {!!item.areaTalhao && (
                                                 <div style={styles.footerIconRow}>
-                                                    <Icons.Calendar size={14} color={THEME.secondaryText} />
-                                                    <span style={styles.footerText}>{formatDate(item.dataAplicacao)}</span>
+                                                    <Icons.TextureBox size={14} color={THEME.secondaryText} />
+                                                    <span style={styles.footerText}>{item.areaTalhao} ha</span>
                                                 </div>
-                                                {!!item.areaTalhao && (
-                                                    <div style={{...styles.footerIconRow, marginLeft: '12px'}}>
-                                                        <Icons.TextureBox size={14} color={THEME.secondaryText} />
-                                                        <span style={styles.footerText}>{item.areaTalhao} ha</span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                            )}
                                         </div>
-                                        <div style={{ marginLeft: '8px', display: 'flex', alignItems: 'center' }}>
-                                            <Icons.ChevronForward size={20} color={THEME.secondaryText} />
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                <FabAdd onAdd={() => setModal({ visible: true, itemId: null })} />
-
-                {modal.visible && (
-                    <AddOrEditPulverizacaoModal 
-                        itemId={modal.itemId} 
-                        onClose={() => setModal({ visible: false, itemId: null })} 
-                        onSaveSuccess={() => setModal({ visible: false, itemId: null })} 
-                    />
+                                    </div>
+                                    <div style={{ marginLeft: '8px' }}>
+                                        <Icons.ChevronForward size={20} color={THEME.secondaryText} />
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
+
+            <FabAdd onAdd={() => setModal({ visible: true, itemId: null })} />
+
+            {modal.visible && (
+                <AddOrEditPulverizacaoModal 
+                    itemId={modal.itemId} 
+                    onClose={() => setModal({ visible: false, itemId: null })} 
+                    onSaveSuccess={() => setModal({ visible: false, itemId: null })} 
+                />
+            )}
         </div>
     );
 }
 
 // =====================================================================
-// 6️⃣ ESTILOS GERAIS (CSS-in-JS Otimizado para Web Mobile/Responsivo)
+// 6️⃣ ESTILOS GERAIS (CLEAN UI)
 // =====================================================================
 
 const styles = {
-    container: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: THEME.background, fontFamily: 'system-ui, -apple-system, sans-serif' },
-    row: { display: 'flex', flexDirection: 'row' },
-    webContainer: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', maxWidth: '800px', margin: '0 auto', position: 'relative', overflow: 'hidden' },
+    container: { display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: THEME.background, fontFamily: 'system-ui, -apple-system, sans-serif' },
+    webContainer: {},
     
-    // Header
-    fullHeader: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center', flexShrink: 0 },
-    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: '60px', width: '100%', maxWidth: '800px', boxSizing: 'border-box' },
-    backButton: { padding: '4px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
+    fullHeader: { backgroundColor: THEME.primary, width: '100%' },
+    headerContent: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: '60px', maxWidth: '1200px', margin: '0 auto' },
+    backButton: { background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     headerTitle: { color: THEME.textWhite, fontSize: '18px', fontWeight: '700' },
     
-    // Empty State
-    emptyState: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '0 40px', marginTop: '50px' },
+    emptyState: { display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'center', alignItems: 'center', padding: '0 40px', marginTop: '50px' },
     emptyTextTitle: { color: THEME.textBlack, fontSize: '18px', fontWeight: '600', marginTop: '16px', marginBottom: '8px' },
     emptyText: { color: THEME.secondaryText, fontSize: '14px', textAlign: 'center', lineHeight: '20px' },
     
-    // Lists (Flat Design)
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: '600px', alignSelf: 'center', padding: '16px', borderRadius: '16px', alignItems: 'center', marginBottom: '12px', border: `1px solid ${THEME.border}`, cursor: 'pointer', boxSizing: 'border-box', textAlign: 'left', transition: 'box-shadow 0.2s' },
+    listContainer: { padding: '16px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '12px' },
+    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, padding: '16px', borderRadius: '16px', alignItems: 'center', boxShadow: '0px 2px 3px rgba(0,0,0,0.05)', cursor: 'pointer', border: 'none', textAlign: 'left', width: '100%' },
     listIconBox: { width: '50px', height: '50px', borderRadius: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '16px', flexShrink: 0 },
-    listContent: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    listTitle: { fontSize: '16px', fontWeight: '700', color: THEME.textBlack, flex: 1, marginRight: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+    listContent: { flex: 1, minWidth: 0 },
+    listTitleRow: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' },
+    listTitle: { fontSize: '16px', fontWeight: '700', color: THEME.textBlack, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: '8px' },
     listSubtitle: { fontSize: '14px', color: THEME.textBlack, marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    listFooter: { display: 'flex', flexDirection: 'row', alignItems: 'center' },
+    listFooter: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' },
     footerIconRow: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px' },
     footerText: { fontSize: '12px', color: THEME.secondaryText, fontWeight: '500' },
     
-    // Status Badge
-    statusBadge: { padding: '4px 8px', borderRadius: '8px', flexShrink: 0 },
+    statusBadge: { padding: '4px 8px', borderRadius: '8px', display: 'inline-block' },
     statusText: { fontSize: '10px', fontWeight: '800' },
     
-    // FAB
-    fabContainer: { position: 'absolute', right: '24px', bottom: '34px', display: 'flex', alignItems: 'center' },
-    fabAdd: { backgroundColor: THEME.primary, width: '60px', height: '60px', borderRadius: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.2)', border: 'none', cursor: 'pointer' },
+    fabContainer: { position: 'fixed', right: '24px', bottom: '34px', zIndex: 10 },
+    fabAdd: { backgroundColor: THEME.primary, width: '60px', height: '60px', borderRadius: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0px 4px 6px rgba(0,0,0,0.2)', border: 'none', cursor: 'pointer' },
     
-    // Modals (Bottom Sheet)
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 1000 },
-    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: '24px', borderTopRightRadius: '24px', padding: '0 24px 24px 24px', maxHeight: '92vh', width: '100%', maxWidth: '600px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingTop: '20px' },
-    modalTitle: { fontSize: '20px', fontWeight: '800', color: THEME.textBlack },
-    closeButton: { padding: '4px', backgroundColor: THEME.lightGray, borderRadius: '20px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 100 },
+    modalContent: {},
+    bottomSheetHandleContainer: { display: 'flex', justifyContent: 'center', paddingTop: '12px', paddingBottom: '16px', position: 'sticky', top: 0, backgroundColor: THEME.secondary, zIndex: 2 },
+    bottomSheetHandle: { width: '40px', height: '5px', borderRadius: '3px', backgroundColor: '#D4D4D4' },
+    modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+    modalTitle: { fontSize: '20px', fontWeight: '800', color: THEME.textBlack, margin: 0 },
+    closeButton: { padding: '4px', backgroundColor: THEME.lightGray, borderRadius: '20px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     
-    // Forms
-    inputContainer: { marginBottom: '18px', display: 'flex', flexDirection: 'column' },
+    inputContainer: { display: 'flex', flexDirection: 'column', marginBottom: '18px' },
     formLabel: { fontSize: '13px', color: THEME.textBlack, marginBottom: '8px', fontWeight: '600', marginLeft: '4px' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: '14px', padding: '0 16px', height: '54px', fontSize: '15px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit' },
+    input: { backgroundColor: THEME.grayInput, borderRadius: '14px', padding: '0 16px', height: '54px', fontSize: '15px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%' },
+    selectBox: { backgroundColor: THEME.grayInput, borderRadius: '14px', padding: '0 16px', height: '54px', fontSize: '15px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%' },
     errorText: { color: THEME.error, fontSize: '12px', marginTop: '6px', marginLeft: '4px' },
     
-    // Section Header
-    sectionHeader: { display: 'flex', flexDirection: 'row', alignItems: 'center', marginTop: '24px', marginBottom: '16px', paddingLeft: '4px' },
+    sectionHeader: { display: 'flex', alignItems: 'center', marginTop: '24px', marginBottom: '16px', paddingLeft: '4px' },
     sectionTitle: { fontSize: '16px', fontWeight: '800', color: THEME.textBlack },
-
-    // Select Custom
-    selectBox: { backgroundColor: THEME.grayInput, borderRadius: '14px', padding: '0 16px', height: '54px', fontSize: '15px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit', appearance: 'none', cursor: 'pointer', backgroundImage: 'url("data:image/svg+xml;utf8,<svg fill=\'%234A4A4A\' height=\'24\' viewBox=\'0 0 24 24\' width=\'24\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px top 50%' },
     
-    // Chips
-    chipButton: { backgroundColor: THEME.secondary, border: `1px solid ${THEME.border}`, padding: '10px 18px', borderRadius: '20px', marginRight: '10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' },
+    chipButton: { backgroundColor: THEME.secondary, border: `1px solid ${THEME.border}`, padding: '10px 18px', borderRadius: '20px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s' },
     chipButtonActive: { backgroundColor: THEME.primary, borderColor: THEME.primary },
     chipText: { color: THEME.secondaryText, fontWeight: '600', fontSize: '14px' },
     chipTextActive: { color: THEME.textWhite },
     
-    // Actions
-    saveButton: { backgroundColor: THEME.primary, borderRadius: '14px', height: '54px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '24px', marginBottom: '16px', boxShadow: `0 4px 8px ${THEME.primary}33`, border: 'none', cursor: 'pointer', width: '100%' },
+    saveButton: { backgroundColor: THEME.primary, borderRadius: '14px', height: '54px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '24px', marginBottom: '16px', boxShadow: `0px 4px 8px ${THEME.primary}33`, border: 'none', cursor: 'pointer', width: '100%' },
     saveButtonText: { color: THEME.textWhite, fontWeight: '700', fontSize: '16px' },
     deleteButton: { display: 'flex', flexDirection: 'row', backgroundColor: 'transparent', borderRadius: '14px', height: '50px', justifyContent: 'center', alignItems: 'center', border: 'none', cursor: 'pointer', width: '100%' },
-    deleteButtonText: { color: THEME.error, fontWeight: '600', fontSize: '15px' }
+    deleteButtonText: { color: THEME.error, fontWeight: '600', fontSize: '15px' },
+
+    row: { display: 'flex', flexDirection: 'row', gap: '12px', width: '100%' },
+    flex1: { flex: 1 },
+
+    spinner: {
+        width: '24px',
+        height: '24px',
+        border: '3px solid rgba(255,255,255,0.3)',
+        borderRadius: '50%',
+        borderTopColor: THEME.textWhite,
+        animation: 'spin 1s ease-in-out infinite'
+    },
+    spinnerPrimary: {
+        width: '40px',
+        height: '40px',
+        border: '4px solid rgba(76,175,80,0.2)',
+        borderRadius: '50%',
+        borderTopColor: THEME.primary,
+        animation: 'spin 1s ease-in-out infinite',
+        margin: '40px auto'
+    }
 };

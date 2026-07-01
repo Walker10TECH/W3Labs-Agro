@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// PlantioColheita.jsx
+// PlantioColheitaScreen.jsx
 //
 // Módulo de registo de plantios e colheitas.
 // Adaptado EXCLUSIVAMENTE PARA WEB.
@@ -609,15 +609,16 @@ export const PlantiosScreen = ({ navigation }) => {
     return (
         <div style={styles.container}>
             <CustomHeader title="Plantios" onBack={() => navigation?.goBack()} />
-            <div style={styles.webContainer}>
+            <div style={styles.webContainer} className="web-container-responsive">
                 <div style={styles.listContainer}>
                     {loading ? (
                         <div style={{ marginTop: '50px', color: THEME.primary }}>Carregando...</div>
                     ) : items.length === 0 ? (
                         <span style={styles.emptyText}>Nenhum plantio registrado.</span>
                     ) : (
-                        items.map(item => (
-                            <div key={item.id} style={styles.listItem} onClick={() => setModal({ visible: true, itemId: item.id })}>
+                        <div className="responsive-grid">
+                            {items.map(item => (
+                                <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => setModal({ visible: true, itemId: item.id })}>
                                 <div style={styles.listIconBox}>
                                     <Icons.Leaf size={24} color={THEME.primary} />
                                 </div>
@@ -627,7 +628,8 @@ export const PlantiosScreen = ({ navigation }) => {
                                 </div>
                                 <Icons.ChevronForward size={24} color={THEME.secondaryText} />
                             </div>
-                        ))
+                            ))}
+                        </div>
                     )}
                 </div>
                 
@@ -655,15 +657,16 @@ export const ColheitasScreen = ({ navigation }) => {
     return (
         <div style={styles.container}>
             <CustomHeader title="Colheitas" onBack={() => navigation?.goBack()} />
-            <div style={styles.webContainer}>
+            <div style={styles.webContainer} className="web-container-responsive">
                 <div style={styles.listContainer}>
                     {loading ? (
                         <div style={{ marginTop: '50px', color: THEME.primary }}>Carregando...</div>
                     ) : items.length === 0 ? (
                         <span style={styles.emptyText}>Nenhuma colheita registrada.</span>
                     ) : (
-                        items.map(item => (
-                            <div key={item.id} style={styles.listItem} onClick={() => setModal({ visible: true, itemId: item.id })}>
+                        <div className="responsive-grid">
+                            {items.map(item => (
+                                <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => setModal({ visible: true, itemId: item.id })}>
                                 <div style={styles.listIconBox}>
                                     <Icons.Silo size={24} color={THEME.primary} />
                                 </div>
@@ -673,7 +676,8 @@ export const ColheitasScreen = ({ navigation }) => {
                                 </div>
                                 <Icons.ChevronForward size={24} color={THEME.secondaryText} />
                             </div>
-                        ))
+                            ))}
+                        </div>
                     )}
                 </div>
                 
@@ -690,6 +694,41 @@ export const ColheitasScreen = ({ navigation }) => {
 
 export default function PlantioColheita() {
     const [activeScreen, setActiveScreen] = useState(null);
+
+    useEffect(() => {
+        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-styles')) {
+            const style = document.createElement('style');
+            style.id = 'w3-agro-styles';
+            style.innerHTML = `
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                * { box-sizing: border-box; }
+                button { border: none; outline: none; cursor: pointer; background: transparent; padding: 0; }
+                input, textarea { border: none; outline: none; font-family: inherit; }
+                textarea { resize: vertical; }
+                .responsive-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 15px;
+                    width: 100%;
+                }
+                .responsive-stats {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                    width: 100%;
+                }
+                @media (min-width: 768px) {
+                    .responsive-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+                    .responsive-stats { grid-template-columns: repeat(4, 1fr); }
+                    .list-item-responsive { max-width: 100% !important; margin: 0 !important; }
+                    .web-container-responsive { max-width: 1200px !important; }
+                    .modal-responsive { max-width: 600px !important; align-self: center !important; margin: 5vh auto !important; border-radius: 24px !important; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }, []);
 
     if (activeScreen === 'plantio') return <PlantiosScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
     if (activeScreen === 'colheita') return <ColheitasScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
@@ -723,7 +762,7 @@ const styles = {
 
     // Cabeçalho
     fullHeader: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center' },
-    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: '60px', width: '100%', maxWidth: '1000px', boxSizing: 'border-box' },
+    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: '60px', width: '100%', maxWidth: '1200px', boxSizing: 'border-box' },
     backButton: { padding: '5px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
     headerTitle: { color: THEME.textWhite, fontSize: '22px', fontWeight: 'bold' },
 

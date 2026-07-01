@@ -1,10 +1,3 @@
-// -----------------------------------------------------------------------------
-// Diesel.jsx
-//
-// Módulo de Gestão de Estoque e Consumo de Diesel.
-// Adaptado EXCLUSIVAMENTE PARA WEB.
-// Integrado ao Firestore, responsivo para Web (Desktop e Mobile).
-// -----------------------------------------------------------------------------
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig'; // Ajuste o caminho se necessário
@@ -57,7 +50,6 @@ const formatDate = (date) => {
     }
 };
 
-// Hook Customizado para Responsividade na Web
 const useWindowDimensions = () => {
     const [width, setWidth] = useState(window.innerWidth);
     useEffect(() => {
@@ -68,7 +60,6 @@ const useWindowDimensions = () => {
     return { width };
 };
 
-// Hook Customizado para Firestore
 const useFirestoreCollection = (collectionName, options = {}) => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -104,7 +95,7 @@ const useFirestoreCollection = (collectionName, options = {}) => {
 };
 
 // =====================================================================
-// 3️⃣ ÍCONES SVG INLINE (Sem dependências externas)
+// 3️⃣ ÍCONES SVG INLINE
 // =====================================================================
 const Icons = {
     ArrowBack: ({ size = 24, color = "currentColor" }) => (
@@ -183,9 +174,7 @@ const FormSelect = ({ label, placeholder, value, onValueChange, items, required,
 );
 
 const FormDate = ({ label, value, onChange }) => {
-    // Formata a data para YYYY-MM-DD para o input type="date"
     const dateValue = value instanceof Date && !isNaN(value) ? value.toISOString().split('T')[0] : '';
-
     return (
         <div style={styles.inputContainer}>
             <label style={styles.formLabel}>{label}</label>
@@ -195,7 +184,6 @@ const FormDate = ({ label, value, onChange }) => {
                 value={dateValue}
                 onChange={(e) => {
                     if (e.target.value) {
-                        // Adiciona tempo neutro para evitar problemas de fuso horário
                         onChange(new Date(`${e.target.value}T12:00:00`));
                     }
                 }}
@@ -253,7 +241,7 @@ const AddEstoqueDieselModal = ({ visible, onClose, isDesktop }) => {
 
     return (
         <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={{ ...styles.modalContent, ...(isDesktop ? styles.modalContentDesktop : {}) }} onClick={e => e.stopPropagation()}>
+            <div className="responsive-modal" onClick={e => e.stopPropagation()}>
                 <div style={styles.modalHeader}>
                     <span style={styles.modalTitle}>Comprar Diesel (Entrada)</span>
                     <button style={styles.closeButton} onClick={onClose}><Icons.Close size={20} /></button>
@@ -359,7 +347,7 @@ const AddOrEditDieselModal = ({ visible, itemId, onClose, estoqueAtual, isDeskto
 
     return (
         <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={{ ...styles.modalContent, ...(isDesktop ? styles.modalContentDesktop : {}) }} onClick={e => e.stopPropagation()}>
+            <div className="responsive-modal" onClick={e => e.stopPropagation()}>
                 <div style={styles.modalHeader}>
                     <span style={styles.modalTitle}>{itemId ? 'Editar Abastecimento' : 'Registrar Abastecimento'}</span>
                     <button style={styles.closeButton} onClick={onClose}><Icons.Close size={20} /></button>
@@ -371,8 +359,12 @@ const AddOrEditDieselModal = ({ visible, itemId, onClose, estoqueAtual, isDeskto
                         value={data.equipamentoId} onValueChange={v => setField('equipamentoId', v)} error={errors.equipamentoId}
                     />
                     <div style={styles.row}>
-                        <div style={{ flex: 1 }}><FormInput label="Litros" value={data.litros} onChangeText={v => setField('litros', v, 'numeric')} type="number" required error={errors.litros} /></div>
-                        <div style={{ flex: 1, marginLeft: 10 }}><FormInput label="Horímetro/Odômetro" value={data.odometro} onChangeText={v => setField('odometro', v, 'numeric')} type="number" error={errors.odometro} /></div>
+                        <div style={{ flex: 1, marginRight: 10 }}>
+                            <FormInput label="Litros" value={data.litros} onChangeText={v => setField('litros', v, 'numeric')} type="number" required error={errors.litros} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <FormInput label="Horímetro/Odômetro" value={data.odometro} onChangeText={v => setField('odometro', v, 'numeric')} type="number" error={errors.odometro} />
+                        </div>
                     </div>
                     <FormInput label="Local do Abastecimento" value={data.localAbastecimento} onChangeText={v => setField('localAbastecimento', v)} />
                     <FormDate label="Data do Abastecimento" value={data.data} onChange={d => setField('data', d)} />
@@ -393,7 +385,7 @@ const AddOrEditDieselModal = ({ visible, itemId, onClose, estoqueAtual, isDeskto
 };
 
 // =====================================================================
-// 6️⃣ COMPONENTE DE GRÁFICO 
+// 6️⃣ GRÁFICO WEB (HTML/CSS)
 // =====================================================================
 
 const WebDieselChart = ({ abastecimentos }) => {
@@ -408,9 +400,7 @@ const WebDieselChart = ({ abastecimentos }) => {
         const sortedDates = Object.keys(dataMap).sort((a, b) => {
             const [d1, m1] = a.split('/');
             const [d2, m2] = b.split('/');
-            // Considerando o ano atual dinamicamente ou fixo conforme a regra de negócio
-            const year = new Date().getFullYear();
-            return new Date(year, m1 - 1, d1) - new Date(year, m2 - 1, d2);
+            return new Date(2026, m1 - 1, d1) - new Date(2026, m2 - 1, d2);
         });
 
         const recentDates = sortedDates.slice(-7);
@@ -429,8 +419,8 @@ const WebDieselChart = ({ abastecimentos }) => {
 
     return (
         <div style={styles.chartCard}>
-            <span style={styles.chartTitle}>Consumo Recente Diário (L)</span>
-            <div style={styles.webChartContainer}>
+            <h3 style={styles.chartTitle}>Consumo Recente Diário (L)</h3>
+            <div style={styles.chartContainer}>
                 {chartData.map((item, index) => (
                     <div key={index} style={styles.barWrapper}>
                         <span style={styles.barLabelTop}>{item.litros.toFixed(0)}</span>
@@ -446,12 +436,12 @@ const WebDieselChart = ({ abastecimentos }) => {
 };
 
 // =====================================================================
-// 7️⃣ TELA PRINCIPAL (DASHBOARD DO DIESEL)
+// 7️⃣ TELA PRINCIPAL (DASHBOARD)
 // =====================================================================
 
 export default function DieselScreen({ navigation }) {
     const { width } = useWindowDimensions();
-    const isDesktop = width > 800;
+    const isDesktop = width >= 768;
 
     const { items: abastecimentos, loading: loadA } = useFirestoreCollection('diesel');
     const { items: estoque, loading: loadE } = useFirestoreCollection('dieselEstoque');
@@ -468,41 +458,87 @@ export default function DieselScreen({ navigation }) {
 
     const handleOpenAbastecimento = (id = null) => {
         if (!id && estoqueAtual <= 0) {
-            return window.alert("Estoque Vazio: Adicione uma compra de diesel primeiro.");
+            return window.alert("Estoque Vazio! Adicione uma compra de diesel primeiro.");
         }
         setModalAbastecimento({ visible: true, itemId: id });
     };
 
     return (
         <div style={styles.container}>
-            <CustomHeader title="Controle de Diesel" onBack={() => { /* Lógica de navegação web (ex: router.back()) */ }} />
-
-            <div style={styles.webContainer}>
-                <div style={styles.scrollContent}>
-
-                    {/* CARD RESUMO DE ESTOQUE */}
-                    <div style={{ ...styles.summaryCard, ...(isDesktop ? styles.summaryCardDesktop : {}) }}>
-                        <div style={isDesktop ? { flex: 1 } : {}}>
-                            <span style={styles.summaryTitle}>Estoque no Reservatório</span>
-                            {loadE || loadA ? (
-                                <div style={{ marginTop: 10, color: THEME.primary }}>Carregando...</div>
-                            ) : (
-                                <div style={{
-                                    ...styles.summaryValue,
-                                    color: estoqueAtual <= 0 ? THEME.error : (estoqueAtual <= 100 ? THEME.warning : THEME.primary)
-                                }}>
-                                    {estoqueAtual.toFixed(1)} L
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ ...styles.summaryActions, ...(isDesktop ? styles.summaryActionsDesktop : {}) }}>
+            <style>{`
+                .responsive-wrapper {
+                    width: 100%;
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    padding: 16px;
+                    box-sizing: border-box;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 20px;
+                }
+                .responsive-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 15px;
+                }
+                .responsive-form-row {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 15px;
+                }
+                .responsive-modal {
+                    background-color: #FFFFFF;
+                    width: 100%;
+                    border-top-left-radius: 20px;
+                    border-top-right-radius: 20px;
+                    padding: 20px;
+                    max-height: 90vh;
+                    overflow-y: auto;
+                    box-sizing: border-box;
+                    display: flex;
+                    flex-direction: column;
+                }
+                @media (min-width: 768px) {
+                    .responsive-grid {
+                        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                    }
+                    .responsive-form-row {
+                        grid-template-columns: 1fr 1fr;
+                    }
+                    .responsive-modal {
+                        max-width: 600px;
+                        border-radius: 20px;
+                        align-self: center;
+                        margin-bottom: 5vh;
+                    }
+                }
+            `}</style>
+            <CustomHeader title="Controle de Diesel" onBack={() => { if (navigation?.goBack) navigation.goBack(); else window.history.back(); }} />
+            
+            <div style={styles.scrollContent}>
+                <div className="responsive-wrapper">
+                    
+                    {/* RESUMO DE ESTOQUE */}
+                    <div style={styles.summaryCard}>
+                        <span style={styles.summaryTitle}>Estoque no Reservatório</span>
+                        {loadE || loadA ? (
+                            <div style={{ margin: '20px 0' }}>Carregando...</div>
+                        ) : (
+                            <span style={{ 
+                                ...styles.summaryValue, 
+                                ...(estoqueAtual <= 100 ? { color: THEME.warning } : {}), 
+                                ...(estoqueAtual <= 0 ? { color: THEME.error } : {}) 
+                            }}>
+                                {estoqueAtual.toFixed(1)} L
+                            </span>
+                        )}
+                        <div style={styles.summaryActions}>
                             <button style={styles.btnSecondary} onClick={() => setModalEstoque(true)}>
                                 <Icons.Add size={20} color={THEME.primary} />
                                 <span style={styles.btnSecondaryText}>Comprar</span>
                             </button>
                             <button style={styles.btnPrimary} onClick={() => handleOpenAbastecimento(null)}>
-                                <Icons.GasPump size={16} color={THEME.textWhite} />
+                                <Icons.GasPump size={20} color={THEME.textWhite} />
                                 <span style={styles.btnPrimaryText}>Abastecer</span>
                             </button>
                         </div>
@@ -511,104 +547,398 @@ export default function DieselScreen({ navigation }) {
                     {/* GRÁFICO DE CONSUMO */}
                     <WebDieselChart abastecimentos={abastecimentos} />
 
-                    {/* HISTÓRICO DE SAÍDAS */}
-                    <span style={styles.historyTitle}>Histórico de Abastecimentos</span>
+                    {/* HISTÓRICO */}
+                    <h2 style={styles.historyTitle}>Histórico de Abastecimentos</h2>
                     {loadA ? (
-                        <div style={{ marginTop: 20, textAlign: 'center', color: THEME.primary }}>Carregando histórico...</div>
+                        <div style={{ textAlign: 'center', padding: 20 }}>Carregando histórico...</div>
                     ) : abastecimentos.length === 0 ? (
                         <div style={styles.emptyContainer}>
-                            <Icons.GasPump size={50} color="#D0D0D0" />
+                            <Icons.GasPump size={40} color="#D0D0D0" />
                             <span style={styles.emptyText}>Nenhum abastecimento registrado.</span>
                         </div>
                     ) : (
-                        abastecimentos.map(item => (
-                            <button key={item.id} style={styles.listItem} onClick={() => handleOpenAbastecimento(item.id)}>
-                                <div style={styles.listIconBox}>
-                                    <Icons.Tractor size={20} color={THEME.primary} />
+                        <div className="responsive-grid">
+                            {abastecimentos.map(item => (
+                                <div key={item.id} style={styles.listItem} onClick={() => handleOpenAbastecimento(item.id)}>
+                                    <div style={styles.listIconBox}>
+                                        <Icons.Tractor size={20} color={THEME.primary} />
+                                    </div>
+                                    <div style={styles.listContent}>
+                                        <span style={styles.listTitle}>{item.equipamentoNome}</span>
+                                        <span style={styles.listSubtitle}>{formatDate(item.data)} • {item.odometro ? `${item.odometro}h` : 'Sem hora'}</span>
+                                    </div>
+                                    <span style={styles.listLiters}>{parseFloat(item.litros).toFixed(1)} L</span>
                                 </div>
-                                <div style={styles.listContent}>
-                                    <span style={styles.listTitle}>{item.equipamentoNome}</span>
-                                    <span style={styles.listSubtitle}>{formatDate(item.data)} • {item.odometro ? `${item.odometro}h` : 'Sem hora'}</span>
-                                </div>
-                                <span style={styles.listLiters}>{parseFloat(item.litros).toFixed(1)} L</span>
-                            </button>
-                        ))
+                            ))}
+                        </div>
                     )}
                 </div>
-
-                <AddEstoqueDieselModal visible={modalEstoque} isDesktop={isDesktop} onClose={() => setModalEstoque(false)} />
-                <AddOrEditDieselModal visible={modalAbastecimento.visible} isDesktop={isDesktop} itemId={modalAbastecimento.itemId} onClose={() => setModalAbastecimento({ visible: false, itemId: null })} estoqueAtual={estoqueAtual} />
             </div>
+
+            {/* MODAIS */}
+            <AddEstoqueDieselModal visible={modalEstoque} onClose={() => setModalEstoque(false)} isDesktop={isDesktop} />
+            <AddOrEditDieselModal visible={modalAbastecimento.visible} itemId={modalAbastecimento.itemId} onClose={() => setModalAbastecimento({ visible: false, itemId: null })} estoqueAtual={estoqueAtual} isDesktop={isDesktop} />
         </div>
     );
 }
 
 // =====================================================================
-// 8️⃣ ESTILOS GERAIS (Objetos JS para DOM CSS)
+// 8️⃣ ESTILOS CSS-in-JS (WEB)
 // =====================================================================
 
 const styles = {
-    container: { display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: THEME.background, fontFamily: 'system-ui, -apple-system, sans-serif' },
-    webContainer: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', maxWidth: '1000px', margin: '0 auto' },
-    scrollContent: { padding: '15px', paddingBottom: '60px', flex: 1, overflowY: 'auto' },
-    row: { display: 'flex', flexDirection: 'row' },
-
-    // Header
-    fullHeader: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center' },
-    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: '60px', width: '100%', maxWidth: '1000px', boxSizing: 'border-box' },
-    backButton: { background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
-    headerTitle: { color: THEME.textWhite, fontSize: '22px', fontWeight: 'bold' },
-
-    // Resumo
-    summaryCard: { backgroundColor: THEME.secondary, borderRadius: '15px', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', marginBottom: '20px' },
-    summaryCardDesktop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    summaryTitle: { fontSize: '18px', color: THEME.secondaryText, fontWeight: '600' },
-    summaryValue: { fontSize: '48px', fontWeight: 'bold', margin: '10px 0' },
-    summaryActions: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: '10px', gap: '10px' },
-    summaryActionsDesktop: { width: '350px', marginTop: '0' },
-    btnPrimary: { flex: 1, backgroundColor: THEME.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60px', borderRadius: '10px', border: 'none', cursor: 'pointer' },
-    btnPrimaryText: { color: THEME.textWhite, fontWeight: 'bold', marginLeft: '8px', fontSize: '18px' },
-    btnSecondary: { flex: 1, backgroundColor: THEME.grayInput, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60px', borderRadius: '10px', border: 'none', cursor: 'pointer' },
-    btnSecondaryText: { color: THEME.primary, fontWeight: 'bold', marginLeft: '5px', fontSize: '18px' },
-
-    // Gráfico
-    chartCard: { backgroundColor: THEME.secondary, borderRadius: '15px', padding: '15px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' },
-    chartTitle: { fontSize: '20px', fontWeight: 'bold', color: THEME.textBlack, display: 'block', marginBottom: '10px' },
-    webChartContainer: { display: 'flex', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '140px', marginTop: '10px' },
-    barWrapper: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, maxWidth: '60px' },
-    barTrack: { width: '14px', height: '100px', backgroundColor: THEME.grayInput, borderRadius: '7px', display: 'flex', alignItems: 'flex-end', margin: '6px 0', overflow: 'hidden' },
-    barFill: { width: '100%', backgroundColor: THEME.primary, borderRadius: '7px', transition: 'height 0.3s ease' },
-    barLabelTop: { fontSize: '14px', color: THEME.primary, fontWeight: 'bold' },
-    barLabelBottom: { fontSize: '14px', color: THEME.secondaryText },
-
-    // Histórico
-    historyTitle: { fontSize: '22px', fontWeight: 'bold', color: THEME.textBlack, marginBottom: '10px', marginLeft: '5px', display: 'block' },
-    emptyContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '30px' },
-    emptyText: { color: THEME.secondaryText, marginTop: '10px', fontSize: '18px' },
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, padding: '15px', borderRadius: '12px', alignItems: 'center', marginBottom: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', border: 'none', width: '100%', cursor: 'pointer', textAlign: 'left' },
-    listIconBox: { width: '44px', height: '44px', backgroundColor: THEME.grayInput, borderRadius: '22px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '15px', flexShrink: 0 },
-    listContent: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    listTitle: { fontSize: '20px', fontWeight: 'bold', color: THEME.textBlack, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    listSubtitle: { fontSize: '14px', color: THEME.secondaryText, marginTop: '3px' },
-    listLiters: { fontSize: '20px', fontWeight: 'bold', color: THEME.primary },
-
-    // Modais e Inputs
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 1000 },
-    modalContent: { backgroundColor: THEME.secondary, borderRadius: '20px 20px 0 0', padding: '20px', width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' },
-    modalContentDesktop: { width: '600px', borderRadius: '20px', maxHeight: '85vh', alignSelf: 'center', marginBottom: 'auto', marginTop: 'auto' },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
-    modalTitle: { fontSize: '24px', fontWeight: 'bold', color: THEME.textBlack },
-    closeButton: { backgroundColor: THEME.grayInput, border: 'none', padding: '6px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    modalBody: { overflowY: 'auto', flex: 1, paddingRight: '5px' },
-
-    inputContainer: { marginBottom: '15px', display: 'flex', flexDirection: 'column' },
-    formLabel: { fontSize: '16px', color: THEME.secondaryText, marginBottom: '6px', fontWeight: '500' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: '8px', padding: '0 15px', height: '50px', fontSize: '16px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit' },
-    inputError: { border: `1px solid ${THEME.error}` },
-    inputDisabled: { opacity: 0.6, cursor: 'not-allowed' },
-    selectBox: { backgroundColor: THEME.grayInput, borderRadius: '8px', padding: '0 15px', height: '50px', fontSize: '16px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit', cursor: 'pointer' },
-    errorText: { color: THEME.error, fontSize: '12px', marginTop: '4px' },
-
-    saveButton: { backgroundColor: THEME.primary, borderRadius: '8px', height: '60px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '10px', marginBottom: '10px', border: 'none', color: THEME.textWhite, fontWeight: 'bold', fontSize: '20px', cursor: 'pointer', width: '100%' },
-    deleteButton: { backgroundColor: 'transparent', border: `1px solid ${THEME.error}`, borderRadius: '8px', height: '60px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px', color: THEME.error, fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%' }
+    container: {
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        backgroundColor: THEME.background,
+        fontFamily: 'Inter, system-ui, sans-serif',
+    },
+    fullHeader: {
+        backgroundColor: THEME.primary,
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+    },
+    headerContent: {
+        width: '100%',
+        maxWidth: 800,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '15px',
+        height: 60,
+        boxSizing: 'border-box'
+    },
+    backButton: {
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 5,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerTitle: {
+        color: THEME.textWhite,
+        fontSize: 22,
+        fontWeight: 'bold',
+    },
+    scrollContent: {
+        flex: 1,
+        padding: 15,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+    },
+    contentWrapper: {
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    contentWrapperDesktop: {
+        maxWidth: 800,
+    },
+    row: {
+        display: 'flex',
+        flexDirection: 'row',
+        width: '100%',
+    },
+    summaryCard: {
+        backgroundColor: THEME.secondary,
+        borderRadius: 15,
+        padding: 20,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        boxShadow: '0px 2px 8px rgba(0,0,0,0.08)',
+        marginBottom: 20,
+    },
+    summaryTitle: {
+        fontSize: 18,
+        color: THEME.secondaryText,
+        fontWeight: '600',
+    },
+    summaryValue: {
+        fontSize: 48,
+        fontWeight: 'bold',
+        color: THEME.primary,
+        margin: '10px 0',
+    },
+    summaryActions: {
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+        marginTop: 10,
+        gap: 10,
+    },
+    btnPrimary: {
+        flex: 1,
+        backgroundColor: THEME.primary,
+        border: 'none',
+        borderRadius: 10,
+        height: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+    },
+    btnPrimaryText: {
+        color: THEME.textWhite,
+        fontWeight: 'bold',
+        marginLeft: 8,
+        fontSize: 16,
+    },
+    btnSecondary: {
+        flex: 1,
+        backgroundColor: THEME.grayInput,
+        border: 'none',
+        borderRadius: 10,
+        height: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+    },
+    btnSecondaryText: {
+        color: THEME.primary,
+        fontWeight: 'bold',
+        marginLeft: 8,
+        fontSize: 16,
+    },
+    chartCard: {
+        backgroundColor: THEME.secondary,
+        borderRadius: 15,
+        padding: 15,
+        marginBottom: 20,
+        boxShadow: '0px 2px 8px rgba(0,0,0,0.08)',
+    },
+    chartTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: THEME.textBlack,
+        margin: '0 0 15px 0',
+    },
+    chartContainer: {
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'flex-end',
+        height: 160,
+    },
+    barWrapper: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        flex: 1,
+    },
+    barTrack: {
+        width: 14,
+        height: 120,
+        backgroundColor: THEME.grayInput,
+        borderRadius: 7,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        margin: '6px 0',
+        overflow: 'hidden',
+    },
+    barFill: {
+        width: '100%',
+        backgroundColor: THEME.primary,
+        borderRadius: 7,
+        transition: 'height 0.3s ease',
+    },
+    barLabelTop: {
+        fontSize: 12,
+        color: THEME.primary,
+        fontWeight: 'bold',
+    },
+    barLabelBottom: {
+        fontSize: 12,
+        color: THEME.secondaryText,
+    },
+    historyTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: THEME.textBlack,
+        margin: '0 0 15px 5px',
+    },
+    listContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+    },
+    listItem: {
+        display: 'flex',
+        flexDirection: 'row',
+        backgroundColor: THEME.secondary,
+        padding: 15,
+        borderRadius: 12,
+        alignItems: 'center',
+        boxShadow: '0px 2px 5px rgba(0,0,0,0.05)',
+        cursor: 'pointer',
+        transition: 'transform 0.2s ease',
+    },
+    listIconBox: {
+        width: 44,
+        height: 44,
+        backgroundColor: THEME.grayInput,
+        borderRadius: 22,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 15,
+    },
+    listContent: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+    },
+    listTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: THEME.textBlack,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+    },
+    listSubtitle: {
+        fontSize: 14,
+        color: THEME.secondaryText,
+        marginTop: 3,
+    },
+    listLiters: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: THEME.primary,
+        marginLeft: 10,
+    },
+    emptyContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+    },
+    emptyText: {
+        color: THEME.secondaryText,
+        marginTop: 15,
+        fontSize: 16,
+    },
+    modalOverlay: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+        zIndex: 1000,
+        animation: 'fadeIn 0.2s ease',
+    },
+    modalContent: {},
+    modalContentDesktop: {},
+    modalHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: THEME.textBlack,
+    },
+    closeButton: {
+        background: THEME.grayInput,
+        border: 'none',
+        borderRadius: '50%',
+        width: 36,
+        height: 36,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        cursor: 'pointer',
+    },
+    modalBody: {
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    inputContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        marginBottom: 15,
+    },
+    formLabel: {
+        fontSize: 14,
+        color: THEME.secondaryText,
+        marginBottom: 6,
+        fontWeight: '500',
+    },
+    input: {
+        backgroundColor: THEME.grayInput,
+        border: '1px solid transparent',
+        borderRadius: 8,
+        padding: '12px 15px',
+        fontSize: 16,
+        color: THEME.textBlack,
+        outline: 'none',
+        boxSizing: 'border-box',
+        width: '100%',
+    },
+    inputError: {
+        borderColor: THEME.error,
+    },
+    inputDisabled: {
+        opacity: 0.6,
+        cursor: 'not-allowed',
+    },
+    selectBox: {
+        backgroundColor: THEME.grayInput,
+        border: '1px solid transparent',
+        borderRadius: 8,
+        padding: '12px 15px',
+        fontSize: 16,
+        color: THEME.textBlack,
+        outline: 'none',
+        boxSizing: 'border-box',
+        width: '100%',
+        cursor: 'pointer',
+        appearance: 'none',
+    },
+    errorText: {
+        color: THEME.error,
+        fontSize: 12,
+        marginTop: 4,
+    },
+    saveButton: {
+        backgroundColor: THEME.primary,
+        color: THEME.textWhite,
+        border: 'none',
+        borderRadius: 8,
+        height: 50,
+        fontSize: 18,
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        marginTop: 10,
+        marginBottom: 10,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    deleteButton: {
+        backgroundColor: 'transparent',
+        color: THEME.error,
+        border: `1px solid ${THEME.error}`,
+        borderRadius: 8,
+        height: 50,
+        fontSize: 16,
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        marginBottom: 20,
+    }
 };

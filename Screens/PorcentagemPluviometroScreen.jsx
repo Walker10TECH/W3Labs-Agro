@@ -1,31 +1,18 @@
-// -----------------------------------------------------------------------------
-// PorcentagemPluviometro.jsx
-//
-// Módulo de Gestão de Andamento de Atividades (%) e Pluviômetro (mm).
-// Adaptado EXCLUSIVAMENTE PARA WEB.
-// Integrado ao Firestore, com estatísticas automáticas, gráficos Web e Design W3Labs.
-// -----------------------------------------------------------------------------
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Chart } from 'react-google-charts';
-
-// Certifique-se de que auth e db estão exportados no seu firebaseConfig
 import { auth, db } from '../firebaseConfig';
-
-// =====================================================================
-// 1️⃣ CONFIGURAÇÕES, VALIDAÇÕES E TEMA
-// =====================================================================
 
 const THEME = {
     primary: '#4CAF50',
     primaryDark: '#388E3C',
     secondary: '#FFFFFF',
-    background: '#F9FBF9',    // Cinza/Verde ultra claro para respiro
-    textBlack: '#1A1D19',     // Preto mais suave (Off-black)
+    background: '#F9FBF9',
+    textBlack: '#1A1D19',
     textWhite: '#FFFFFF',
-    secondaryText: '#4A4A4A', // Cinza médio para subtítulos
-    grayInput: '#F0F4F1',     // Fundo dos inputs com leve tom de verde
-    border: '#D0D6D0',        // Bordas sutis
+    secondaryText: '#4A4A4A',
+    grayInput: '#F0F4F1',
+    border: '#D0D6D0',
     error: '#E53935',
     lightGray: '#F5F5F5'
 };
@@ -49,10 +36,6 @@ const ERROR_MESSAGES = {
     FUTURE_DATE: 'Data inválida (futuro)',
 };
 
-// =====================================================================
-// 2️⃣ ÍCONES SVG INLINE (Mobile Web)
-// =====================================================================
-
 const Icons = {
     ChevronBack: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>),
     ChevronForward: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>),
@@ -70,10 +53,6 @@ const Icons = {
     WeatherPouring: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path><path d="M16 20l-2 2"></path><path d="M8 20l-2 2"></path><path d="M12 20l-2 2"></path></svg>),
     Leaf: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>)
 };
-
-// =====================================================================
-// 3️⃣ FUNÇÕES UTILITÁRIAS
-// =====================================================================
 
 const parseMoeda = (value) => {
     if (!value) return 0;
@@ -107,9 +86,11 @@ const calculateRainfallStats = (data) => {
     };
 };
 
-// =====================================================================
-// 4️⃣ COMPONENTES DE UI REUTILIZÁVEIS (CLEAN WEB)
-// =====================================================================
+const Spinner = ({ color = THEME.primary }) => (
+    <div style={{
+        width: 30, height: 30, border: `4px solid ${color}40`, borderTopColor: color, borderRadius: '50%', animation: 'spin 1s linear infinite'
+    }} />
+);
 
 const CustomHeader = ({ title, onBack }) => (
     <div style={styles.fullHeader}>
@@ -175,7 +156,10 @@ const FormDate = ({ label, value, onChange }) => {
                     style={styles.dateInput}
                     value={dateStr}
                     onChange={(e) => {
-                        if (e.target.value) onChange(new Date(`${e.target.value}T12:00:00`));
+                        if (e.target.value) {
+                            const newDate = new Date(`${e.target.value}T12:00:00`);
+                            onChange(newDate);
+                        }
                     }}
                 />
             </div>
@@ -195,17 +179,6 @@ const StatBox = ({ label, value, color, IconComponent }) => (
     </div>
 );
 
-// =====================================================================
-// 5️⃣ MODAIS DE REGISTRO (BOTTOM SHEET STYLE)
-// =====================================================================
-
-const BottomSheetHandle = () => (
-    <div style={styles.bottomSheetHandleContainer}>
-        <div style={styles.bottomSheetHandle} />
-    </div>
-);
-
-/* --- MODAL: PORCENTAGEM / ANDAMENTO --- */
 const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
@@ -222,16 +195,11 @@ const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
                     const item = docSnap.data();
                     setData({ ...item, valor: item.valor ? String(item.valor) : '', dataAtualizacao: item.dataAtualizacao?.toDate ? item.dataAtualizacao.toDate() : new Date() });
                 }
-            } catch (e) { console.error(e); } setLoading(false);
+            } catch (e) {} setLoading(false);
         })();
     }, [itemId]);
 
-    if (!itemId && !loading && !saving && Object.keys(data).length === 0) return null; // Avoid render errors if closed prematurely
-
-    const setField = (field, value) => { 
-        setData(prev => ({ ...prev, [field]: value })); 
-        if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); 
-    };
+    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
 
     const handleSave = async () => {
         const errs = {};
@@ -240,7 +208,7 @@ const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
         if (data.valor === '' || isNaN(val) || val < VALIDATION_CONFIG.minPercentage || val > VALIDATION_CONFIG.maxPercentage) errs.valor = ERROR_MESSAGES.INVALID_PERCENTAGE;
         setErrors(errs);
         
-        if (Object.keys(errs).length > 0) return window.alert('Por favor, corrija os campos em destaque.');
+        if (Object.keys(errs).length > 0) return window.alert('Aviso: Por favor, corrija os campos em destaque.');
 
         setSaving(true);
         try {
@@ -250,21 +218,23 @@ const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
                 id, titulo: data.titulo.trim(), valor: val, descricao: data.descricao.trim(), dataAtualizacao: new Date() 
             }, { merge: true });
             onClose();
-        } catch (e) { window.alert('Falha ao salvar dados.'); }
+        } catch (e) { window.alert('Erro: Falha ao salvar dados.'); }
         setSaving(false);
     };
 
     const handleDelete = async () => {
-        if (window.confirm('Deseja excluir este andamento?')) {
+        if (window.confirm('Tem certeza que deseja apagar este andamento?')) {
             await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'porcentagens', itemId));
             onClose();
         }
     };
 
     return (
-        <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <BottomSheetHandle />
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={styles.modalContent}>
+                <div style={styles.bottomSheetHandleContainer}>
+                    <div style={styles.bottomSheetHandle} />
+                </div>
                 <div style={styles.modalHeader}>
                     <span style={styles.modalTitle}>{itemId ? 'Editar Andamento' : 'Novo Andamento'}</span>
                     <button style={styles.closeButton} onClick={onClose}>
@@ -272,14 +242,14 @@ const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
                     </button>
                 </div>
 
-                {loading ? <div style={{ margin: '30px 0', textAlign: 'center', color: THEME.primary }}>Carregando...</div> : (
-                    <div style={styles.scrollContent}>
-                        <FormInput label="Atividade" placeholder="Ex: Plantio da Soja" required value={data.titulo} onChangeText={v => setField('titulo', v)} maxLength={VALIDATION_CONFIG.maxTitleLength} error={errors.titulo} />
-                        <FormInput label="Progresso concluído (%)" placeholder="0 a 100" required value={data.valor} onChangeText={v => setField('valor', v.replace(/[^0-9,.]/g, ''))} type="number" maxLength={5} error={errors.valor} />
+                {loading ? <div style={styles.loadingContainer}><Spinner /></div> : (
+                    <div style={styles.modalScroll}>
+                        <FormInput label="Atividade" required placeholder="Ex: Plantio da Soja" value={data.titulo} onChangeText={v => setField('titulo', v)} maxLength={VALIDATION_CONFIG.maxTitleLength} error={errors.titulo} />
+                        <FormInput label="Progresso concluído (%)" required placeholder="0 a 100" value={data.valor} onChangeText={v => setField('valor', v.replace(/[^0-9,.]/g, ''))} type="text" maxLength={5} error={errors.valor} />
                         <FormInput label="Observações (Opcional)" placeholder="Detalhes extras sobre a atividade..." value={data.descricao} onChangeText={v => setField('descricao', v)} multiline maxLength={VALIDATION_CONFIG.maxDescriptionLength} />
 
                         <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                            {saving ? <span style={{ color: THEME.textWhite }}>Salvando...</span> : <span style={styles.saveButtonText}>Salvar Andamento</span>}
+                            {saving ? <Spinner color={THEME.textWhite} /> : <span style={styles.saveButtonText}>Salvar Andamento</span>}
                         </button>
                         
                         {itemId && (
@@ -295,7 +265,6 @@ const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
     );
 };
 
-/* --- MODAL: PLUVIÔMETRO --- */
 const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
@@ -312,7 +281,7 @@ const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
                     const item = docSnap.data();
                     setData({ ...item, milimetros: item.milimetros ? String(item.milimetros) : '', dataMedicao: item.dataMedicao?.toDate ? item.dataMedicao.toDate() : new Date() });
                 }
-            } catch (e) { console.error(e); } setLoading(false);
+            } catch (e) {} setLoading(false);
         })();
     }, [itemId]);
 
@@ -325,7 +294,7 @@ const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
         if (data.dataMedicao > new Date()) errs.dataMedicao = ERROR_MESSAGES.FUTURE_DATE;
         setErrors(errs);
         
-        if (Object.keys(errs).length > 0) return window.alert('Por favor, corrija os campos em destaque.');
+        if (Object.keys(errs).length > 0) return window.alert('Aviso: Por favor, corrija os campos em destaque.');
 
         setSaving(true);
         try {
@@ -335,21 +304,23 @@ const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
                 id, milimetros: mm, observacoes: data.observacoes.trim(), dataMedicao: data.dataMedicao 
             }, { merge: true });
             onClose();
-        } catch (e) { window.alert('Falha ao salvar medição.'); }
+        } catch (e) { window.alert('Erro: Falha ao salvar medição.'); }
         setSaving(false);
     };
 
     const handleDelete = async () => {
-        if (window.confirm('Deseja excluir esta medição?')) {
+        if (window.confirm('Tem certeza que deseja apagar esta medição?')) {
             await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'pluviometro', itemId));
             onClose();
         }
     };
 
     return (
-        <div style={styles.modalOverlay} onClick={onClose}>
-            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <BottomSheetHandle />
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={styles.modalContent}>
+                <div style={styles.bottomSheetHandleContainer}>
+                    <div style={styles.bottomSheetHandle} />
+                </div>
                 <div style={styles.modalHeader}>
                     <span style={styles.modalTitle}>{itemId ? 'Editar Medição' : 'Nova Medição'}</span>
                     <button style={styles.closeButton} onClick={onClose}>
@@ -357,16 +328,16 @@ const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
                     </button>
                 </div>
 
-                {loading ? <div style={{ margin: '30px 0', textAlign: 'center', color: THEME.primary }}>Carregando...</div> : (
-                    <div style={styles.scrollContent}>
+                {loading ? <div style={styles.loadingContainer}><Spinner /></div> : (
+                    <div style={styles.modalScroll}>
                         <FormDate label="Data da Medição *" value={data.dataMedicao} onChange={d => setField('dataMedicao', d)} />
                         {errors.dataMedicao && <span style={styles.errorText}>{errors.dataMedicao}</span>}
                         
-                        <FormInput label="Volume de Chuva (mm) *" placeholder="Ex: 15.5" value={data.milimetros} onChangeText={v => setField('milimetros', v.replace(/[^0-9,.]/g, ''))} type="number" maxLength={6} error={errors.milimetros} />
+                        <FormInput label="Volume de Chuva (mm) *" placeholder="Ex: 15.5" value={data.milimetros} onChangeText={v => setField('milimetros', v.replace(/[^0-9,.]/g, ''))} type="text" maxLength={6} error={errors.milimetros} />
                         <FormInput label="Observações Climáticas" placeholder="Como estava o tempo? Alguma anomalia?" value={data.observacoes} onChangeText={v => setField('observacoes', v)} multiline maxLength={VALIDATION_CONFIG.maxObservationsLength} />
 
                         <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                            {saving ? <span style={{ color: THEME.textWhite }}>Salvando...</span> : <span style={styles.saveButtonText}>Salvar Medição</span>}
+                            {saving ? <Spinner color={THEME.textWhite} /> : <span style={styles.saveButtonText}>Salvar Medição</span>}
                         </button>
                         
                         {itemId && (
@@ -382,10 +353,6 @@ const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
     );
 };
 
-// =====================================================================
-// 6️⃣ COMPONENTES DE GRÁFICO (GOOGLE CHARTS)
-// =====================================================================
-
 const ProgressoChart = ({ data }) => {
     if (!data || data.length === 0) return null;
     const chartData = useMemo(() => {
@@ -397,7 +364,7 @@ const ProgressoChart = ({ data }) => {
     return (
         <div style={styles.chartCard}>
             <div style={styles.chartTitle}>Visão Geral do Andamento</div>
-            <div style={{ width: '100%', overflow: 'hidden', borderRadius: '12px' }}>
+            <div style={{ width: '100%', overflow: 'hidden', borderRadius: 12 }}>
                 <Chart chartType="BarChart" width="100%" height="250px" data={chartData}
                     options={{ title: "", chartArea: { width: "65%", height: '80%' }, hAxis: { title: "Progresso (%)", minValue: 0, maxValue: 100 }, legend: { position: "none" } }}
                 />
@@ -421,7 +388,7 @@ const ChuvaChart = ({ data }) => {
     return (
         <div style={styles.chartCard}>
             <div style={styles.chartTitle}>Histórico de Chuvas</div>
-            <div style={{ width: '100%', overflow: 'hidden', borderRadius: '12px' }}>
+            <div style={{ width: '100%', overflow: 'hidden', borderRadius: 12 }}>
                 <Chart chartType="AreaChart" width="100%" height="250px" data={chartData}
                     options={{ hAxis: { format: 'dd/MM', textStyle: { color: THEME.secondaryText } }, vAxis: { minValue: 0 }, legend: { position: 'none' }, colors: [THEME.primary], chartArea: { width: '85%', height: '70%' }, backgroundColor: 'transparent' }}
                 />
@@ -429,10 +396,6 @@ const ChuvaChart = ({ data }) => {
         </div>
     );
 };
-
-// =====================================================================
-// 7️⃣ TELAS DE LISTAGEM
-// =====================================================================
 
 export const PorcentagemListaScreen = ({ navigation }) => {
     const [modal, setModal] = useState({ visible: false, itemId: null });
@@ -451,40 +414,43 @@ export const PorcentagemListaScreen = ({ navigation }) => {
 
     return (
         <div style={styles.container}>
-            <CustomHeader title="Andamento de Atividades" onBack={() => navigation?.goBack()} />
-            <div style={styles.webContainer}>
+            <div style={styles.webContainer} className="web-container-responsive">
+                <CustomHeader title="Andamento de Atividades" onBack={() => navigation?.goBack()} />
                 
                 <div style={styles.listContainer}>
                     <ProgressoChart data={items} />
                     
-                    {loading ? <div style={{ marginTop: '50px', textAlign: 'center', color: THEME.primary }}>Carregando...</div>
+                    {loading ? <div style={styles.loadingContainer}><Spinner /></div>
                     : items.length === 0 ? (
                         <div style={styles.emptyState}>
                             <Icons.Tasks size={50} color={THEME.border} />
-                            <div style={styles.emptyTextTitle}>Nenhuma atividade</div>
-                            <div style={styles.emptyText}>Toque no botão + para registrar um novo andamento.</div>
+                            <span style={styles.emptyTextTitle}>Nenhuma atividade</span>
+                            <span style={styles.emptyText}>Toque no botão + para registrar um novo andamento.</span>
                         </div>
                     )
-                    : items.map(item => (
-                        <button key={item.id} style={styles.listItem} onClick={() => setModal({ visible: true, itemId: item.id })}>
-                            <div style={styles.listIconBox}>
-                                <Icons.CheckCircle size={24} color={THEME.primary} />
-                            </div>
-                            <div style={styles.listContent}>
-                                <div style={styles.listTitle} title={item.titulo}>{item.titulo || 'Sem título'}</div>
-                                
-                                {/* Barra de Progresso Clean */}
-                                <div style={styles.progressBarBackground}>
-                                    <div style={{ ...styles.progressBarFill, width: `${parseFloat(item.valor) || 0}%` }} />
+                    : (
+                        <div className="responsive-grid">
+                            {items.map(item => (
+                                <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => { setModal({ visible: true, itemId: item.id }); }}>
+                                    <div style={styles.listIconBox}>
+                                        <Icons.CheckCircle size={24} color={THEME.primary} />
+                                    </div>
+                                    <div style={styles.listContent}>
+                                        <span style={styles.listTitle} className="truncate">{item.titulo || 'Sem título'}</span>
+                                        
+                                        <div style={styles.progressBarBackground}>
+                                            <div style={{...styles.progressBarFill, width: `${parseFloat(item.valor) || 0}%` }} />
+                                        </div>
+                                        <span style={styles.listSubtitle}>{(parseFloat(item.valor) || 0).toFixed(0)}% concluído</span>
+                                    </div>
+                                    <Icons.ChevronForward size={20} color={THEME.secondaryText} />
                                 </div>
-                                <div style={styles.listSubtitle}>{(parseFloat(item.valor) || 0).toFixed(0)}% concluído</div>
-                            </div>
-                            <Icons.ChevronForward size={20} color={THEME.secondaryText} />
-                        </button>
-                    ))}
+                            ))}
+                        </div>
+                    )}
                 </div>
 
-                <FabAdd onAdd={() => setModal({ visible: true, itemId: null })} />
+                <FabAdd onAdd={() => { setModal({ visible: true, itemId: null }); }} />
                 {modal.visible && <AddOrEditPorcentagemModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
             </div>
         </div>
@@ -510,14 +476,14 @@ export const PluviometroListaScreen = ({ navigation }) => {
 
     return (
         <div style={styles.container}>
-            <CustomHeader title="Controle Pluviométrico" onBack={() => navigation?.goBack()} />
-            <div style={styles.webContainer}>
+            <div style={styles.webContainer} className="web-container-responsive">
+                <CustomHeader title="Controle Pluviométrico" onBack={() => navigation?.goBack()} />
                 
                 <div style={styles.listContainer}>
                     {stats.count > 0 && (
                         <div style={styles.statsContainer}>
                             <div style={styles.sectionTitle}>Estatísticas (Geral)</div>
-                            <div style={styles.statsRow}>
+                            <div className="responsive-stats">
                                 <StatBox label="Total" value={`${stats.total} mm`} color="#0288D1" IconComponent={Icons.Water} />
                                 <StatBox label="Média" value={`${stats.average} mm`} color="#388E3C" IconComponent={Icons.ChartLine} />
                                 <StatBox label="Máxima" value={`${stats.max} mm`} color="#F57C00" IconComponent={Icons.ArrowUp} />
@@ -528,57 +494,93 @@ export const PluviometroListaScreen = ({ navigation }) => {
 
                     <ChuvaChart data={items} />
 
-                    {items.length > 0 && <div style={{ ...styles.sectionTitle, marginTop: '10px' }}>Histórico de Medições</div>}
+                    {items.length > 0 && <div style={{...styles.sectionTitle, marginTop: 10}}>Histórico de Medições</div>}
 
-                    {loading ? <div style={{ marginTop: '50px', textAlign: 'center', color: THEME.primary }}>Carregando...</div>
+                    {loading ? <div style={styles.loadingContainer}><Spinner /></div>
                     : items.length === 0 ? (
                         <div style={styles.emptyState}>
                             <Icons.WeatherPouring size={56} color={THEME.border} />
-                            <div style={styles.emptyTextTitle}>Nenhuma medição</div>
-                            <div style={styles.emptyText}>Registre os índices de chuva tocando no botão + abaixo.</div>
+                            <span style={styles.emptyTextTitle}>Nenhuma medição</span>
+                            <span style={styles.emptyText}>Registre os índices de chuva tocando no botão + abaixo.</span>
                         </div>
                     )
-                    : items.map(item => {
-                        const mm = parseFloat(item.milimetros) || 0;
-                        const color = mm < 5 ? '#66BB6A' : mm < 25 ? '#29B6F6' : mm < 50 ? '#FFA726' : '#EF5350';
-                        return (
-                            <button key={item.id} style={styles.listItem} onClick={() => setModal({ visible: true, itemId: item.id })}>
-                                <div style={{ ...styles.listIconBox, backgroundColor: `${color}15` }}>
-                                    <Icons.WaterOutline size={26} color={color} />
-                                </div>
-                                <div style={styles.listContent}>
-                                    <div style={styles.listTitle}>{mm.toFixed(1)} mm</div>
-                                    <div style={styles.listSubtitle}>{formatDate(item.dataMedicao)}</div>
-                                </div>
-                                <Icons.ChevronForward size={20} color={THEME.secondaryText} />
-                            </button>
-                        );
-                    })}
+                    : (
+                        <div className="responsive-grid">
+                            {items.map(item => {
+                                const mm = parseFloat(item.milimetros) || 0;
+                                const color = mm < 5 ? '#66BB6A' : mm < 25 ? '#29B6F6' : mm < 50 ? '#FFA726' : '#EF5350';
+                                return (
+                                    <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => { setModal({ visible: true, itemId: item.id }); }}>
+                                        <div style={{...styles.listIconBox, backgroundColor: `${color}15` }}>
+                                            <Icons.WaterOutline size={26} color={color} />
+                                        </div>
+                                        <div style={styles.listContent}>
+                                            <span style={styles.listTitle}>{mm.toFixed(1)} mm</span>
+                                            <span style={styles.listSubtitle}>{formatDate(item.dataMedicao)}</span>
+                                        </div>
+                                        <Icons.ChevronForward size={20} color={THEME.secondaryText} />
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
-                <FabAdd onAdd={() => setModal({ visible: true, itemId: null })} />
+                <FabAdd onAdd={() => { setModal({ visible: true, itemId: null }); }} />
                 {modal.visible && <AddOrEditPluviometroModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
             </div>
         </div>
     );
 };
 
-// =====================================================================
-// 8️⃣ WRAPPER DE DEMONSTRAÇÃO (NAVEGAÇÃO PRINCIPAL)
-// =====================================================================
-
 export default function PorcentagemPluviometro() {
     const [activeScreen, setActiveScreen] = useState(null);
+
+    useEffect(() => {
+        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-styles')) {
+            const style = document.createElement('style');
+            style.id = 'w3-agro-styles';
+            style.innerHTML = `
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                * { box-sizing: border-box; }
+                button { border: none; outline: none; cursor: pointer; background: transparent; padding: 0; }
+                input, textarea { border: none; outline: none; font-family: inherit; }
+                textarea { resize: vertical; }
+                .responsive-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 15px;
+                    width: 100%;
+                }
+                .responsive-stats {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                    width: 100%;
+                }
+                @media (min-width: 768px) {
+                    .responsive-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+                    .responsive-stats { grid-template-columns: repeat(4, 1fr); }
+                    .list-item-responsive { max-width: 100% !important; margin: 0 !important; }
+                    .chart-responsive { max-width: 100% !important; }
+                    .web-container-responsive { max-width: 1200px !important; }
+                    .modal-responsive { max-width: 600px !important; align-self: center !important; margin: 5vh auto !important; border-radius: 24px !important; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }, []);
 
     if (activeScreen === 'porcentagem') return <PorcentagemListaScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
     if (activeScreen === 'pluviometro') return <PluviometroListaScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
 
     return (
-        <div style={{ ...styles.container, justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '40px' }}>
+        <div style={{...styles.container, justifyContent: 'center', alignItems: 'center', display: 'flex', flexDirection: 'column'}}>
+            <div style={{ alignItems: 'center', marginBottom: 40, display: 'flex', flexDirection: 'column' }}>
                 <Icons.Leaf size={60} color={THEME.primary} />
-                <div style={{ fontSize: '24px', fontWeight: '800', color: THEME.textBlack, marginTop: '10px' }}>W3Labs App</div>
-                <div style={{ fontSize: '14px', color: THEME.secondaryText }}>Ambiente de testes (Web Mobile)</div>
+                <span style={{ fontSize: 24, fontWeight: '800', color: THEME.textBlack, marginTop: 10 }}>W3Labs App</span>
+                <span style={{ fontSize: 14, color: THEME.secondaryText }}>Ambiente de testes</span>
             </div>
 
             <button style={styles.menuButton} onClick={() => setActiveScreen('porcentagem')}>
@@ -594,84 +596,81 @@ export default function PorcentagemPluviometro() {
     );
 }
 
-// =====================================================================
-// 9️⃣ ESTILOS CSS-IN-JS (CLEAN WEB UI)
-// =====================================================================
-
 const styles = {
-    container: { display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: THEME.background, fontFamily: 'system-ui, -apple-system, sans-serif' },
-    webContainer: { display: 'flex', flexDirection: 'column', flex: 1, width: '100%', maxWidth: '800px', margin: '0 auto', position: 'relative', backgroundColor: THEME.background },
+    container: { flex: 1, backgroundColor: THEME.background, minHeight: '100vh', display: 'flex', flexDirection: 'column' },
+    webContainer: { flex: 1, width: '100%', maxWidth: 800, alignSelf: 'center', margin: '0 auto', display: 'flex', flexDirection: 'column', position: 'relative' },
     
     // Header
-    fullHeader: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center' },
-    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: '60px', width: '100%', maxWidth: '800px', boxSizing: 'border-box' },
-    backButton: { padding: '4px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
-    headerTitle: { color: THEME.textWhite, fontSize: '22px', fontWeight: '700' },
+    fullHeader: { backgroundColor: THEME.primary, width: '100%' },
+    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '15px', height: 60, maxWidth: 1200, margin: '0 auto' },
+    backButton: { padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    headerTitle: { color: THEME.textWhite, fontSize: 22, fontWeight: '700' },
     
     // Lists & Empty States
-    listContainer: { padding: '16px', display: 'flex', flexDirection: 'column', flexGrow: 1, paddingBottom: '100px', overflowY: 'auto' },
-    sectionTitle: { fontSize: '20px', fontWeight: '700', color: THEME.textBlack, marginBottom: '12px', marginLeft: '4px' },
-    emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: '60px', padding: '0 40px' },
-    emptyTextTitle: { color: THEME.textBlack, fontSize: '22px', fontWeight: '600', marginTop: '16px', marginBottom: '8px' },
-    emptyText: { color: THEME.secondaryText, fontSize: '18px', textAlign: 'center', lineHeight: '24px' },
+    listContainer: { padding: 16, flexGrow: 1, paddingBottom: 100, display: 'flex', flexDirection: 'column' },
+    sectionTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 12, marginLeft: 4 },
+    emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: 60, padding: '0 40px' },
+    emptyTextTitle: { color: THEME.textBlack, fontSize: 22, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+    emptyText: { color: THEME.secondaryText, fontSize: 18, textAlign: 'center', lineHeight: '24px' },
+    loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 40 },
+
+    // List Items
+    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 12px auto', padding: 16, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, cursor: 'pointer' },
+    listIconBox: { width: 48, height: 48, backgroundColor: THEME.grayInput, borderRadius: 14, display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+    listContent: { flex: 1, marginRight: 10, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+    listTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 6 },
+    listSubtitle: { fontSize: 16, color: THEME.secondaryText, marginTop: 4 },
     
-    // List Items (Flat design)
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: '600px', alignSelf: 'center', padding: '16px', borderRadius: '16px', alignItems: 'center', marginBottom: '12px', border: `1px solid ${THEME.border}`, cursor: 'pointer', transition: 'background-color 0.2s', boxSizing: 'border-box', textAlign: 'left' },
-    listIconBox: { width: '48px', height: '48px', backgroundColor: THEME.grayInput, borderRadius: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '16px', flexShrink: 0 },
-    listContent: { flex: 1, marginRight: '10px', overflow: 'hidden' },
-    listTitle: { fontSize: '20px', fontWeight: '700', color: THEME.textBlack, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-    listSubtitle: { fontSize: '16px', color: THEME.secondaryText, marginTop: '4px' },
-    
-    // Progress Bar (Clean)
-    progressBarBackground: { height: '6px', backgroundColor: THEME.grayInput, borderRadius: '3px', width: '100%', overflow: 'hidden' },
-    progressBarFill: { height: '100%', backgroundColor: THEME.primary, borderRadius: '3px', transition: 'width 0.3s ease' },
+    // Progress Bar
+    progressBarBackground: { height: 6, backgroundColor: THEME.grayInput, borderRadius: 3, width: '100%', overflow: 'hidden', display: 'flex' },
+    progressBarFill: { height: '100%', backgroundColor: THEME.primary, borderRadius: 3 },
     
     // FAB
-    fabContainer: { position: 'absolute', right: '24px', bottom: '34px', display: 'flex', alignItems: 'center' },
-    fabAdd: { backgroundColor: THEME.primary, width: '60px', height: '60px', borderRadius: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.2)' },
+    fabContainer: { position: 'absolute', right: 24, bottom: 34, display: 'flex', alignItems: 'center' },
+    fabAdd: { backgroundColor: THEME.primary, width: 60, height: 60, borderRadius: 30, display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0px 4px 5px rgba(0,0,0,0.2)' },
     
-    // Modals (Bottom Sheet)
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 1000 },
-    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: '24px', borderTopRightRadius: '24px', padding: '0 24px 24px 24px', maxHeight: '90vh', width: '100%', maxWidth: '600px', alignSelf: 'center', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' },
-    bottomSheetHandleContainer: { display: 'flex', justifyContent: 'center', paddingTop: '12px', paddingBottom: '16px' },
-    bottomSheetHandle: { width: '40px', height: '5px', borderRadius: '3px', backgroundColor: '#D4D4D4' },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' },
-    modalTitle: { fontSize: '24px', fontWeight: '800', color: THEME.textBlack },
-    closeButton: { padding: '4px', backgroundColor: THEME.lightGray, borderRadius: '20px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' },
-    scrollContent: { overflowY: 'auto', flex: 1, paddingBottom: '30px' },
+    // Modals
+    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 1000 },
+    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '0 24px 24px 24px', maxHeight: '90%', width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto', display: 'flex', flexDirection: 'column' },
+    bottomSheetHandleContainer: { display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 16 },
+    bottomSheetHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#D4D4D4' },
+    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    modalTitle: { fontSize: 24, fontWeight: '800', color: THEME.textBlack },
+    closeButton: { padding: 4, backgroundColor: THEME.lightGray, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modalScroll: { overflowY: 'auto', paddingBottom: 30 },
     
     // Forms
-    inputContainer: { marginBottom: '18px', display: 'flex', flexDirection: 'column' },
-    formLabel: { fontSize: '16px', color: THEME.textBlack, marginBottom: '8px', fontWeight: '600', marginLeft: '4px' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: '14px', padding: '0 16px', height: '60px', fontSize: '16px', color: THEME.textBlack, border: '1px solid transparent', outline: 'none', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit' },
-    textArea: { height: '100px', paddingTop: '15px', resize: 'vertical' },
+    inputContainer: { marginBottom: 18, display: 'flex', flexDirection: 'column' },
+    formLabel: { fontSize: 16, color: THEME.textBlack, marginBottom: 8, fontWeight: '600', marginLeft: 4 },
+    input: { backgroundColor: THEME.grayInput, borderRadius: 14, padding: '0 16px', height: 60, fontSize: 18, color: THEME.textBlack },
     inputError: { border: `1px solid ${THEME.error}` },
-    errorText: { color: THEME.error, fontSize: '12px', marginTop: '6px', marginLeft: '4px' },
+    textArea: { height: 100, paddingTop: 15 },
+    errorText: { color: THEME.error, fontSize: 12, marginTop: 6, marginLeft: 4 },
     
     // Date Input Form
-    dateBox: { backgroundColor: THEME.secondary, border: `1px solid ${THEME.border}`, borderRadius: '14px', display: 'flex', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', height: '60px' },
-    dateIconWrapper: { padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRight: `1px solid ${THEME.border}`, height: '100%' },
-    dateInput: { flex: 1, height: '100%', border: 'none', padding: '0 16px', fontSize: '16px', color: THEME.textBlack, outline: 'none', background: 'transparent', fontFamily: 'inherit' },
+    dateBox: { backgroundColor: THEME.secondary, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, borderRadius: 14, display: 'flex', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', height: 60, position: 'relative' },
+    dateIconWrapper: { padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightStyle: 'solid', borderRightColor: THEME.border, height: '100%' },
+    dateInput: { flex: 1, border: 'none', background: 'transparent', fontSize: 18, color: THEME.textBlack, padding: '0 16px', outline: 'none' },
     
     // Buttons
-    saveButton: { backgroundColor: THEME.primary, borderRadius: '14px', height: '60px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '16px', marginBottom: '16px', border: 'none', cursor: 'pointer', width: '100%', boxShadow: `0 4px 8px ${THEME.primary}33` },
-    saveButtonText: { color: THEME.textWhite, fontWeight: '700', fontSize: '20px' },
-    deleteButton: { display: 'flex', flexDirection: 'row', backgroundColor: 'transparent', borderRadius: '14px', height: '60px', justifyContent: 'center', alignItems: 'center', border: 'none', cursor: 'pointer', width: '100%' },
-    deleteButtonText: { color: THEME.error, fontWeight: '600', fontSize: '18px', marginLeft: '6px' },
+    saveButton: { backgroundColor: THEME.primary, borderRadius: 14, height: 60, display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 16, marginBottom: 16, boxShadow: `0px 4px 8px ${THEME.primary}33`, width: '100%' },
+    saveButtonText: { color: THEME.textWhite, fontWeight: '700', fontSize: 20 },
+    deleteButton: { display: 'flex', flexDirection: 'row', backgroundColor: 'transparent', borderRadius: 14, height: 60, justifyContent: 'center', alignItems: 'center', width: '100%' },
+    deleteButtonText: { color: THEME.error, fontWeight: '600', fontSize: 18, marginLeft: 6 },
 
     // Estatísticas (Grid 2x2)
-    statsContainer: { width: '100%', maxWidth: '600px', alignSelf: 'center', marginBottom: '24px' },
+    statsContainer: { width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 24px auto', display: 'flex', flexDirection: 'column' },
     statsRow: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
-    statBox: { backgroundColor: THEME.secondary, padding: '16px', borderRadius: '16px', width: '48%', marginBottom: '12px', display: 'flex', flexDirection: 'row', alignItems: 'center', border: '1px solid transparent', boxSizing: 'border-box' },
-    statIconBadge: { width: '36px', height: '36px', borderRadius: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-    statValue: { fontSize: '22px', fontWeight: '800', marginBottom: '2px' },
-    statLabel: { fontSize: '14px', color: THEME.secondaryText, fontWeight: '500' },
+    statBox: { backgroundColor: THEME.secondary, padding: 16, borderRadius: 16, width: '48%', marginBottom: 12, display: 'flex', flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border },
+    statIconBadge: { width: 36, height: 36, borderRadius: 18, display: 'flex', justifyContent: 'center', alignItems: 'center' },
+    statValue: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
+    statLabel: { fontSize: 16, color: THEME.secondaryText, fontWeight: '500' },
     
     // Gráficos
-    chartCard: { width: '100%', maxWidth: '600px', alignSelf: 'center', backgroundColor: THEME.secondary, padding: '16px', borderRadius: '16px', marginBottom: '24px', border: `1px solid ${THEME.border}`, boxSizing: 'border-box' },
-    chartTitle: { fontSize: '20px', fontWeight: '700', color: THEME.textBlack, marginBottom: '16px' },
+    chartCard: { width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 24px auto', backgroundColor: THEME.secondary, padding: 16, borderRadius: 16, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, display: 'flex', flexDirection: 'column' },
+    chartTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 16 },
 
     // Wrapper Menu
-    menuButton: { display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.secondary, width: '85%', maxWidth: '400px', padding: '20px', borderRadius: '16px', marginBottom: '16px', border: `1px solid ${THEME.border}`, cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', boxSizing: 'border-box' },
-    menuButtonText: { fontSize: '18px', fontWeight: '700', color: THEME.textBlack, marginLeft: '16px' }
+    menuButton: { display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.secondary, width: '85%', maxWidth: 400, padding: 20, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, boxShadow: '0px 2px 4px rgba(0,0,0,0.05)' },
+    menuButtonText: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginLeft: 16 }
 };
