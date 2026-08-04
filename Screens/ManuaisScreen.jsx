@@ -1,34 +1,31 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-    ArrowLeft,
-    PlusCircle,
-    Tag,
-    Search,
-    BookOpen,
-    FileText,
-    Pencil,
-    Trash2,
-    Eye,
-    X
-} from 'lucide-react-native';
 import {
     collection,
+    deleteDoc,
     doc,
     getDoc,
-    setDoc,
-    deleteDoc,
     onSnapshot,
+    orderBy,
     query,
-    orderBy
+    setDoc
 } from 'firebase/firestore';
+import {
+    ArrowLeft,
+    BookOpen,
+    Eye,
+    FileText,
+    Pencil,
+    PlusCircle,
+    Search,
+    Sparkles,
+    Tag,
+    Trash2,
+    UploadCloud,
+    X
+} from 'lucide-react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import PdfViewerModal from '../components/PdfViewerModal';
 import { auth, db, INITIAL_MANUAL_CATEGORIES, seedInitialFirestoreData } from '../firebaseConfig';
-
-const formatDate = (dateVal) => {
-    if (!dateVal) return '--/--/----';
-    const date = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
-    if (isNaN(date.getTime())) return '--/--/----';
-    return date.toLocaleDateString('pt-BR');
-};
+import { analyzeManualFile, fileToBase64 } from '../services/agroDocumentAIService';
 
 const DEFAULT_MARCAS = INITIAL_MANUAL_CATEGORIES.map(c => c.nome);
 
@@ -40,6 +37,15 @@ export default function ManuaisScreen({ navigation }) {
     const [marcasList, setMarcasList] = useState(DEFAULT_MARCAS);
     const [searchQuery, setSearchQuery] = useState('');
     const [modal, setModal] = useState({ visible: false, itemId: null });
+
+    // Estado do Visualizador de PDF Embutido
+    const [pdfViewer, setPdfViewer] = useState({
+        visible: false,
+        fileSource: null,
+        title: '',
+        subtitle: '',
+        badgeText: 'Manual PDF'
+    });
 
     useEffect(() => {
         const uid = auth.currentUser?.uid;
@@ -63,7 +69,6 @@ export default function ManuaisScreen({ navigation }) {
                 const merged = Array.from(new Set([...DEFAULT_MARCAS, ...fetchedMarcas]));
                 setMarcasList(merged);
             } else {
-                // Se ainda não houver categorias no banco, inicializa com seed
                 seedInitialFirestoreData(uid);
                 setMarcasList(DEFAULT_MARCAS);
             }
@@ -104,6 +109,22 @@ export default function ManuaisScreen({ navigation }) {
             console.error(err);
             window.alert("Erro ao excluir manual.");
         }
+    };
+
+    const handleOpenPdf = (item) => {
+        const source = item.pdfData || item.url;
+        if (!source) {
+            window.alert("Nenhum arquivo PDF ou link foi anexado a este manual.");
+            return;
+        }
+
+        setPdfViewer({
+            visible: true,
+            fileSource: source,
+            title: item.titulo || 'Manual de Operação',
+            subtitle: `${item.marca || ''} ${item.modelo || ''}`.trim() || 'Guia Técnico Agrícola',
+            badgeText: item.categoria || 'PDF'
+        });
     };
 
     return (
@@ -270,18 +291,17 @@ export default function ManuaisScreen({ navigation }) {
                                             </button>
                                         </div>
 
-                                        {item.url ? (
-                                            <a
-                                                href={item.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                                        {item.url || item.pdfData ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenPdf(item)}
+                                                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
                                             >
                                                 <Eye size={15} />
-                                                <span>Abrir PDF</span>
-                                            </a>
+                                                <span>Visualizar PDF</span>
+                                            </button>
                                         ) : (
-                                            <span className="text-[11px] text-slate-400 font-medium">Sem link anexado</span>
+                                            <span className="text-[11px] text-slate-400 font-medium">Sem arquivo anexado</span>
                                         )}
                                     </div>
                                 </div>
@@ -296,17 +316,39 @@ export default function ManuaisScreen({ navigation }) {
                         itemId={modal.itemId}
                         marcasList={marcasList}
                         onClose={() => setModal({ visible: false, itemId: null })}
+                        onPreviewPdf={(source, title, brand) => {
+                            setPdfViewer({
+                                visible: true,
+                                fileSource: source,
+                                title: title || 'Pré-visualização do Manual',
+                                subtitle: brand || 'Documento em edição',
+                                badgeText: 'Prévia'
+                            });
+                        }}
                     />
                 )}
+
+                {/* Modal Embutido de Visualização de PDF */}
+                <PdfViewerModal
+                    visible={pdfViewer.visible}
+                    fileSource={pdfViewer.fileSource}
+                    title={pdfViewer.title}
+                    subtitle={pdfViewer.subtitle}
+                    badgeText={pdfViewer.badgeText}
+                    onClose={() => setPdfViewer({ visible: false, fileSource: null, title: '', subtitle: '', badgeText: 'PDF' })}
+                />
 
             </div>
         </div>
     );
 }
 
-function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) {
+function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose, onPreviewPdf }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
+    const [aiLoading, setAiLoading] = useState(false);
+    const fileInputRef = useRef(null);
+
     const [titulo, setTitulo] = useState('');
     const [categoria, setCategoria] = useState('Tratores');
     const [marca, setMarca] = useState(marcasList[0] || 'John Deere');
@@ -314,6 +356,8 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
     const [modelo, setModelo] = useState('');
     const [url, setUrl] = useState('');
     const [descricao, setDescricao] = useState('');
+    const [pdfData, setPdfData] = useState(null);
+    const [uploadedFileName, setUploadedFileName] = useState('');
 
     useEffect(() => {
         if (!itemId) return;
@@ -343,6 +387,7 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
                     setModelo(d.modelo || '');
                     setUrl(d.url || '');
                     setDescricao(d.descricao || '');
+                    setPdfData(d.pdfData || null);
                 }
             } catch (e) {
                 console.error(e);
@@ -351,6 +396,42 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
             }
         })();
     }, [itemId, marcasList]);
+
+    const handleAiFileUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setAiLoading(true);
+        setUploadedFileName(file.name);
+        try {
+            // Guarda Base64 para visualização local imediata
+            const b64 = await fileToBase64(file);
+            setPdfData(b64);
+
+            const extracted = await analyzeManualFile(file);
+            if (extracted.titulo) setTitulo(extracted.titulo);
+            if (extracted.categoria) setCategoria(extracted.categoria);
+            if (extracted.modelo) setModelo(extracted.modelo);
+            if (extracted.descricao) setDescricao(extracted.descricao);
+
+            if (extracted.marca) {
+                const matchBrand = marcasList.find(m => m.toLowerCase() === extracted.marca.toLowerCase());
+                if (matchBrand) {
+                    setMarca(matchBrand);
+                    setCustomMarca('');
+                } else {
+                    setMarca('Outra');
+                    setCustomMarca(extracted.marca);
+                }
+            }
+        } catch (err) {
+            console.error("Erro na extração de manual com IA:", err);
+            window.alert("Não foi possível analisar o manual via IA: " + (err.message || "Erro desconhecido"));
+        } finally {
+            setAiLoading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -371,7 +452,7 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
 
         try {
             const docId = itemId || doc(collection(db, 'users', uid, 'manuais')).id;
-            await setDoc(doc(db, 'users', uid, 'manuais', docId), {
+            const payload = {
                 id: docId,
                 titulo: titulo.trim(),
                 categoria,
@@ -380,7 +461,14 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
                 url: url.trim(),
                 descricao: descricao.trim(),
                 dataAtualizacao: new Date()
-            }, { merge: true });
+            };
+
+            // Se o PDF em Base64 for menor que 800KB, salva no Firestore para permitir visualização offline
+            if (pdfData && pdfData.length < 950000) {
+                payload.pdfData = pdfData;
+            }
+
+            await setDoc(doc(db, 'users', uid, 'manuais', docId), payload, { merge: true });
 
             onClose();
         } catch (err) {
@@ -390,6 +478,8 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
             setSaving(false);
         }
     };
+
+    const activePdfSource = pdfData || url;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -407,6 +497,61 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
                     </div>
                 ) : (
                     <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        {/* Botão de Preenchimento Automático com IA */}
+                        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                    <Sparkles size={16} />
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-xs font-bold text-emerald-900 truncate">
+                                        {uploadedFileName || 'Preenchimento com IA'}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-700 truncate">
+                                        Envie o PDF ou foto do manual
+                                    </span>
+                                </div>
+                            </div>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept=".pdf,image/*"
+                                onChange={handleAiFileUpload}
+                            />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                {activePdfSource && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onPreviewPdf(activePdfSource, titulo, marca)}
+                                        className="px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                                        title="Visualizar PDF Carregado"
+                                    >
+                                        <Eye size={14} />
+                                        <span>Ver</span>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    disabled={aiLoading}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    {aiLoading ? (
+                                        <>
+                                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            <span>Lendo...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <UploadCloud size={14} />
+                                            <span>Carregar</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
                         <div>
                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                                 Título do Manual / Documento *
@@ -417,7 +562,7 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
                                 placeholder="Ex: Manual de Operação e Manutenção Tratores 6J"
                                 value={titulo}
                                 onChange={(e) => setTitulo(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
                             />
                         </div>
 
@@ -536,13 +681,25 @@ function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) 
                                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                                     Link / URL do PDF
                                 </label>
-                                <input
-                                    type="url"
-                                    placeholder="https://..."
-                                    value={url}
-                                    onChange={(e) => setUrl(e.target.value)}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
-                                />
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        type="url"
+                                        placeholder="https://..."
+                                        value={url}
+                                        onChange={(e) => setUrl(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                    />
+                                    {url && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onPreviewPdf(url, titulo, marca)}
+                                            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                                            title="Testar e Visualizar URL do PDF"
+                                        >
+                                            <Eye size={18} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 

@@ -795,3 +795,912 @@ form[class*="max-h-"] {
     font-size: 100%;
   }
 }
+
+/* ==========================================================================
+   AGRONOMIA CHATBOT & MARKDOWN-CSS DESIGN SYSTEM (GOOGLE GEMINI AESTHETIC)
+   ========================================================================== */
+
+/* Launcher FAB & Floating Badge */
+.agronomia-fab-badge {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(16, 185, 129, 0.25);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agronomia-fab-badge:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: rgba(52, 211, 153, 0.7);
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.7), 0 0 25px rgba(16, 185, 129, 0.4);
+}
+
+.agronomia-fab-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+  box-shadow: 0 12px 32px -4px rgba(16, 185, 129, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.agronomia-fab-button:hover {
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 18px 40px -4px rgba(16, 185, 129, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+.agronomia-fab-button:active {
+  transform: translateY(1px) scale(0.95);
+}
+
+/* Chat Window Frame (Google Gemini Clean Glass Aesthetic) */
+.agronomia-chat-window {
+  background: linear-gradient(175deg, #0b1329 0%, #0d1b2a 45%, #050d1a 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 65px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(16, 185, 129, 0.22), inset 0 1px 2px rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+
+/* Chat Header */
+.agronomia-chat-header {
+  background: rgba(11, 19, 41, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Model Selector Pill */
+.agronomia-model-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agronomia-model-pill:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+}
+
+/* Google Gemini Welcome Screen & Option Squares ("Quadrados de Opções") */
+.agronomia-gemini-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: fadeIn 0.35s ease-out forwards;
+}
+
+.agronomia-gemini-greeting {
+  background: linear-gradient(135deg, #ffffff 20%, #a7f3d0 60%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gemini Option Grid */
+.agronomia-gemini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .agronomia-gemini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+}
+
+/* Gemini Option Square / Card */
+.agronomia-gemini-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 1.25rem;
+  padding: 0.95rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 105px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.agronomia-gemini-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 1.25rem;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.agronomia-gemini-card:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(52, 211, 153, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.agronomia-gemini-card:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.agronomia-gemini-card-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.6rem;
+  transition: transform 0.2s ease;
+}
+.agronomia-gemini-card:hover .agronomia-gemini-card-icon {
+  transform: scale(1.1);
+}
+
+.agronomia-gemini-card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.3;
+  transition: color 0.2s ease;
+}
+.agronomia-gemini-card:hover .agronomia-gemini-card-title {
+  color: #6ee7b7;
+}
+
+.agronomia-gemini-card-desc {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  line-height: 1.35;
+  margin-top: 0.25rem;
+}
+
+.agronomia-gemini-card-arrow {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  color: #64748b;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+}
+.agronomia-gemini-card:hover .agronomia-gemini-card-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: #34d399;
+}
+
+/* Chat Messages */
+.agronomia-msg-user {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #ffffff;
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
+  box-shadow: 0 8px 24px -4px rgba(16, 185, 129, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.agronomia-msg-bot {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-radius: 1.25rem 1.25rem 1.25rem 0.25rem;
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.agronomia-msg-error {
+  background: rgba(69, 10, 10, 0.55);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+  border-radius: 1.25rem 1.25rem 1.25rem 0.25rem;
+}
+
+/* Message Actions Toolbar */
+.agronomia-msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.agronomia-action-btn {
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.agronomia-action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.agronomia-action-btn.active {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+}
+
+/* Gemini Floating Input Capsule */
+.agronomia-input-container {
+  background: rgba(9, 15, 30, 0.9);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.agronomia-input-capsule {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.5rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.85rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.agronomia-input-capsule:focus-within {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22), inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.agronomia-textarea {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  width: 100%;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+}
+.agronomia-textarea::placeholder {
+  color: #94a3b8;
+}
+
+.agronomia-send-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+.agronomia-send-btn:hover:not(:disabled) {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.6);
+}
+.agronomia-send-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.agronomia-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   MARKDOWN-CSS STYLING SYSTEM (.agronomia-markdown)
+   ========================================================================== */
+
+.agronomia-markdown {
+  font-size: 0.875rem;
+  line-height: 1.68;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+/* Headings */
+.agronomia-markdown h1,
+.agronomia-markdown h2,
+.agronomia-markdown h3,
+.agronomia-markdown h4 {
+  font-weight: 800;
+  color: #f8fafc;
+  margin-top: 1rem;
+  margin-bottom: 0.45rem;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+}
+
+.agronomia-markdown h1 {
+  font-size: 1.2rem;
+  color: #ffffff;
+  border-bottom: 1.5px solid rgba(16, 185, 129, 0.35);
+  padding-bottom: 0.4rem;
+}
+
+.agronomia-markdown h2 {
+  font-size: 1.05rem;
+  color: #34d399;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.25rem;
+}
+
+.agronomia-markdown h3 {
+  font-size: 0.95rem;
+  color: #6ee7b7;
+}
+
+.agronomia-markdown h4 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a7f3d0;
+}
+
+/* Paragraphs & Text */
+.agronomia-markdown p {
+  margin-bottom: 0.75rem;
+}
+.agronomia-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.agronomia-markdown strong {
+  font-weight: 700;
+  color: #34d399;
+}
+
+.agronomia-markdown em {
+  font-style: italic;
+  color: #cbd5e1;
+}
+
+/* Lists */
+.agronomia-markdown ul,
+.agronomia-markdown ol {
+  margin: 0.6rem 0 0.85rem 1.35rem;
+  padding: 0;
+}
+
+.agronomia-markdown ul {
+  list-style-type: disc;
+}
+
+.agronomia-markdown ol {
+  list-style-type: decimal;
+}
+
+.agronomia-markdown li {
+  margin-bottom: 0.4rem;
+  padding-left: 0.25rem;
+  line-height: 1.6;
+}
+.agronomia-markdown li::marker {
+  color: #10b981;
+  font-weight: 800;
+}
+
+/* Code & Pre Blocks */
+.agronomia-markdown code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #6ee7b7;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.agronomia-markdown .agronomia-code-block {
+  margin: 0.85rem 0;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.65);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.agronomia-markdown .agronomia-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.7rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.agronomia-markdown pre {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  overflow-x: auto;
+}
+
+.agronomia-markdown pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  font-size: 0.78rem;
+  color: #a7f3d0;
+  display: block;
+  line-height: 1.55;
+}
+
+/* Blockquotes / Callouts */
+.agronomia-markdown blockquote {
+  margin: 0.85rem 0;
+  padding: 0.65rem 0.95rem;
+  background: rgba(16, 185, 129, 0.08);
+  border-left: 3.5px solid #10b981;
+  border-radius: 0 0.6rem 0.6rem 0;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* Tables with responsive horizontal scroll */
+.agronomia-markdown .agronomia-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 0.85rem 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.agronomia-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.35);
+  text-align: left;
+}
+
+.agronomia-markdown th {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12);
+}
+
+.agronomia-markdown td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+}
+
+.agronomia-markdown tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.agronomia-markdown tr:last-child td {
+  border-bottom: none;
+}
+
+.agronomia-markdown tr:hover td {
+  background: rgba(16, 185, 129, 0.06);
+}
+
+/* Links */
+.agronomia-markdown a {
+  color: #34d399;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.agronomia-markdown a:hover {
+  color: #6ee7b7;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+}
+
+/* Horizontal Rule */
+.agronomia-markdown hr {
+  margin: 1.25rem 0;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+
+/* ==========================================================================
+   RESPONSIVE DESIGN SYSTEM
+   Breakpoints: 9:16 Portrait | 16:9 HD/FHD/4K | 21:9 FHD/4K
+   Resolutions: 720p (1280×720) · 1080p (1920×1080) · 4K (3840×2160)
+   ========================================================================== */
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ROOT RESPONSIVE CUSTOM PROPERTIES
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --screen-padding-x: 1rem;
+  --screen-padding-y: 1.5rem;
+  --container-max: 72rem;          /* 1152px default */
+  --card-gap: 1rem;
+  --chart-height: 240px;
+  --modal-max: 32rem;              /* max-w-lg */
+  --modal-max-wide: 42rem;         /* max-w-2xl */
+  --header-title-size: 1.5rem;     /* text-2xl */
+  --stat-value-size: 1.5rem;
+  --base-font-size: 0.875rem;      /* text-sm */
+  --label-font-size: 0.6875rem;    /* text-[11px] */
+  --grid-cols-cards: 1;
+  --grid-cols-metrics: 2;
+  --grid-cols-rain: 1;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   9:16 PORTRAIT — MOBILE / TABLET VERTICAL
+   (max-width: 768px  OR  aspect-ratio ≤ 0.625)
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* 720p Portrait — 405×720 (phone landscape held vertically like tablet) */
+@media screen and (max-width: 480px),
+       screen and (max-aspect-ratio: 0.625) and (max-width: 768px) {
+  :root {
+    --screen-padding-x: 0.875rem;
+    --screen-padding-y: 1rem;
+    --container-max: 100%;
+    --card-gap: 0.75rem;
+    --chart-height: 180px;
+    --modal-max: calc(100vw - 1.75rem);
+    --modal-max-wide: calc(100vw - 1.5rem);
+    --header-title-size: 1.25rem;
+    --stat-value-size: 1.25rem;
+    --base-font-size: 0.8125rem;
+    --label-font-size: 0.625rem;
+    --grid-cols-cards: 1;
+    --grid-cols-metrics: 2;
+    --grid-cols-rain: 1;
+  }
+
+  /* Screens: main wrapper */
+  .screen-wrapper {
+    padding-left: var(--screen-padding-x);
+    padding-right: var(--screen-padding-x);
+    padding-top: var(--screen-padding-y);
+    padding-bottom: var(--screen-padding-y);
+  }
+
+  /* Header: stack vertically on very small screens */
+  .screen-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  /* Header buttons row */
+  .screen-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  /* Metric/stat cards: 2 columns */
+  .metric-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--card-gap);
+  }
+
+  /* Activity/rain cards: single column */
+  .cards-grid {
+    grid-template-columns: 1fr;
+    gap: var(--card-gap);
+  }
+
+  /* Charts: reduce height */
+  .chart-wrapper {
+    height: var(--chart-height);
+  }
+
+  /* Modals: near-full screen width */
+  .modal-container {
+    max-width: var(--modal-max);
+    border-radius: 1.25rem;
+  }
+
+  .modal-wide-container {
+    max-width: var(--modal-max-wide);
+    border-radius: 1.25rem;
+  }
+
+  /* Modal scrollable body */
+  .modal-body {
+    max-height: 75vh;
+  }
+
+  /* Typography scale */
+  .screen-title {
+    font-size: var(--header-title-size);
+  }
+
+  .stat-value {
+    font-size: var(--stat-value-size);
+  }
+
+  /* Rain sync modal: day list height */
+  .rain-day-list {
+    max-height: 45vh;
+  }
+
+  /* Summary stats grid in sync modal */
+  .sync-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 1080p Portrait equivalent (tall tablet: ~607×1080) */
+@media screen and (min-width: 481px) and (max-width: 768px) and (min-aspect-ratio: 0.45) and (max-aspect-ratio: 0.75) {
+  :root {
+    --screen-padding-x: 1.25rem;
+    --screen-padding-y: 1.25rem;
+    --container-max: 100%;
+    --card-gap: 1rem;
+    --chart-height: 220px;
+    --modal-max: 28rem;
+    --modal-max-wide: 38rem;
+    --header-title-size: 1.375rem;
+    --stat-value-size: 1.375rem;
+    --grid-cols-cards: 2;
+    --grid-cols-metrics: 2;
+    --grid-cols-rain: 2;
+  }
+
+  .metric-grid  { grid-template-columns: repeat(2, 1fr); }
+  .cards-grid   { grid-template-columns: repeat(2, 1fr); }
+  .chart-wrapper { height: var(--chart-height); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   16:9 LANDSCAPE — HD 720p (1280×720)
+   ────────────────────────────────────────────────────────────────────────── */
+@media screen and (min-width: 769px) and (max-width: 1366px)
+                and (min-aspect-ratio: 1.5) and (max-aspect-ratio: 1.9) {
+  :root {
+    --screen-padding-x: 1.5rem;
+    --screen-padding-y: 1.5rem;
+    --container-max: 68rem;
+    --card-gap: 1rem;
+    --chart-height: 220px;
+    --modal-max: 32rem;
+    --modal-max-wide: 44rem;
+    --header-title-size: 1.5rem;
+    --stat-value-size: 1.5rem;
+    --base-font-size: 0.875rem;
+    --grid-cols-cards: 3;
+    --grid-cols-metrics: 4;
+    --grid-cols-rain: 3;
+  }
+
+  .metric-grid  { grid-template-columns: repeat(4, 1fr); }
+  .cards-grid   { grid-template-columns: repeat(3, 1fr); }
+  .rain-grid    { grid-template-columns: repeat(3, 1fr); }
+  .chart-wrapper { height: var(--chart-height); }
+  .modal-body   { max-height: 78vh; }
+  .rain-day-list { max-height: 52vh; }
+  .sync-stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   16:9 LANDSCAPE — FHD 1080p (1920×1080)
+   ────────────────────────────────────────────────────────────────────────── */
+@media screen and (min-width: 1367px) and (max-width: 2200px)
+                and (min-aspect-ratio: 1.5) and (max-aspect-ratio: 1.9) {
+  :root {
+    --screen-padding-x: 2rem;
+    --screen-padding-y: 2rem;
+    --container-max: 80rem;        /* 1280px */
+    --card-gap: 1.25rem;
+    --chart-height: 280px;
+    --modal-max: 34rem;
+    --modal-max-wide: 48rem;
+    --header-title-size: 1.75rem;
+    --stat-value-size: 1.75rem;
+    --base-font-size: 0.9375rem;
+    --label-font-size: 0.75rem;
+    --grid-cols-cards: 3;
+    --grid-cols-metrics: 4;
+    --grid-cols-rain: 3;
+  }
+
+  .metric-grid  { grid-template-columns: repeat(4, 1fr); }
+  .cards-grid   { grid-template-columns: repeat(3, 1fr); }
+  .rain-grid    { grid-template-columns: repeat(3, 1fr); }
+  .chart-wrapper { height: var(--chart-height); }
+  .modal-body   { max-height: 80vh; }
+  .rain-day-list { max-height: 55vh; }
+
+  /* Slightly larger stat numbers */
+  .stat-value   { font-size: var(--stat-value-size); }
+  .screen-title { font-size: var(--header-title-size); }
+
+  .sync-stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   16:9 LANDSCAPE — 4K / QHD (2560×1440 · 3840×2160)
+   ────────────────────────────────────────────────────────────────────────── */
+@media screen and (min-width: 2201px)
+                and (min-aspect-ratio: 1.5) and (max-aspect-ratio: 1.9) {
+  :root {
+    --screen-padding-x: 3rem;
+    --screen-padding-y: 2.5rem;
+    --container-max: 112rem;       /* 1792px — large but contained */
+    --card-gap: 1.75rem;
+    --chart-height: 360px;
+    --modal-max: 42rem;
+    --modal-max-wide: 60rem;
+    --header-title-size: 2.25rem;
+    --stat-value-size: 2.25rem;
+    --base-font-size: 1.0625rem;
+    --label-font-size: 0.875rem;
+    --grid-cols-cards: 4;
+    --grid-cols-metrics: 4;
+    --grid-cols-rain: 4;
+  }
+
+  .metric-grid  { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .cards-grid   { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .rain-grid    { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .chart-wrapper { height: var(--chart-height); }
+
+  /* Scale up interactive elements */
+  .modal-body   { max-height: 82vh; }
+  .rain-day-list { max-height: 60vh; }
+
+  .stat-value   { font-size: var(--stat-value-size); }
+  .screen-title { font-size: var(--header-title-size); }
+
+  /* 4K: slightly larger card paddings */
+  .data-card    { padding: 1.5rem; }
+  .metric-card  { padding: 1.5rem; }
+
+  .sync-stats-grid { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   21:9 ULTRAWIDE — FHD (2560×1080)
+   ────────────────────────────────────────────────────────────────────────── */
+@media screen and (min-width: 1920px) and (max-width: 3500px)
+                and (min-aspect-ratio: 2.1) {
+  :root {
+    --screen-padding-x: 4rem;
+    --screen-padding-y: 2rem;
+    --container-max: 96rem;        /* 1536px — avoids too-wide content */
+    --card-gap: 1.5rem;
+    --chart-height: 300px;
+    --modal-max: 36rem;
+    --modal-max-wide: 52rem;
+    --header-title-size: 1.875rem;
+    --stat-value-size: 2rem;
+    --base-font-size: 1rem;
+    --label-font-size: 0.8125rem;
+    --grid-cols-cards: 4;
+    --grid-cols-metrics: 4;
+    --grid-cols-rain: 4;
+  }
+
+  /* Ultrawide: cap content width with generous side gutters */
+  .screen-wrapper {
+    max-width: var(--container-max);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--screen-padding-x);
+    padding-right: var(--screen-padding-x);
+  }
+
+  .metric-grid  { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .cards-grid   { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .rain-grid    { grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .chart-wrapper { height: var(--chart-height); }
+
+  .stat-value   { font-size: var(--stat-value-size); }
+  .screen-title { font-size: var(--header-title-size); }
+
+  .modal-body   { max-height: 80vh; }
+  .rain-day-list { max-height: 58vh; }
+  .sync-stats-grid { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   21:9 ULTRAWIDE — 4K (3840×1600 / 5120×2160)
+   ────────────────────────────────────────────────────────────────────────── */
+@media screen and (min-width: 3501px)
+                and (min-aspect-ratio: 2.1) {
+  :root {
+    --screen-padding-x: 8rem;
+    --screen-padding-y: 3rem;
+    --container-max: 128rem;       /* 2048px hard cap */
+    --card-gap: 2rem;
+    --chart-height: 420px;
+    --modal-max: 50rem;
+    --modal-max-wide: 72rem;
+    --header-title-size: 2.5rem;
+    --stat-value-size: 2.5rem;
+    --base-font-size: 1.125rem;
+    --label-font-size: 0.9375rem;
+    --grid-cols-cards: 5;
+    --grid-cols-metrics: 4;
+    --grid-cols-rain: 5;
+  }
+
+  .screen-wrapper {
+    max-width: var(--container-max);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: var(--screen-padding-x);
+    padding-right: var(--screen-padding-x);
+  }
+
+  .metric-grid  { grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+  .cards-grid   { grid-template-columns: repeat(5, 1fr); gap: 2rem; }
+  .rain-grid    { grid-template-columns: repeat(5, 1fr); gap: 2rem; }
+  .chart-wrapper { height: var(--chart-height); }
+
+  .stat-value   { font-size: var(--stat-value-size); }
+  .screen-title { font-size: var(--header-title-size); }
+
+  .data-card    { padding: 2rem; }
+  .metric-card  { padding: 2rem; }
+
+  .modal-body   { max-height: 84vh; }
+  .rain-day-list { max-height: 65vh; }
+  .sync-stats-grid { grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   UTILITY: Responsive chart height via CSS variable
+   ────────────────────────────────────────────────────────────────────────── */
+.chart-wrapper {
+  height: var(--chart-height);
+  min-height: 180px;
+  position: relative;
+}
+
+.chart-wrapper > div,
+.chart-wrapper iframe,
+.chart-wrapper svg {
+  height: var(--chart-height) !important;
+}
+
+/* Smooth transitions when resizing */
+.screen-wrapper,
+.metric-grid,
+.cards-grid,
+.rain-grid,
+.chart-wrapper,
+.modal-container,
+.modal-wide-container {
+  transition: padding 0.2s ease, gap 0.2s ease;
+}
+
+
+

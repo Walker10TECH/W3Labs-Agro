@@ -1,25 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    MapPin,
-    Navigation,
+    Check,
     Layers,
+    LocateFixed,
+    MapPin,
     Search,
     X,
-    Check,
     ZoomIn,
-    ZoomOut,
-    LocateFixed,
-    Maximize2,
-    Minimize2,
-    Compass,
-    Sparkles
+    ZoomOut
 } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
 import {
+    formatCoordinates,
     getCurrentPosition,
-    reverseGeocodeOSM,
-    searchLocationOSM,
     parseCoordinates,
-    formatCoordinates
+    reverseGeocodeOSM,
+    searchLocationOSM
 } from '../services/locationService';
 
 // Carregador dinâmico de Leaflet CDN para Web

@@ -20,7 +20,8 @@ import {
     Images,
     FileText,
     AlertCircle,
-    CheckCircle2
+    CheckCircle2,
+    Eye
 } from 'lucide-react-native';
 import {
     collection,
@@ -35,6 +36,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { analyzeRomaneioFile, processRomaneioWithGroqVision } from '../services/romaneioAIService';
+import PdfViewerModal from '../components/PdfViewerModal';
 
 const parseMoeda = (val) => {
     if (typeof val === 'number') return val;
@@ -1139,6 +1141,8 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
     const [aiError, setAiError] = useState(null);
     const [selectedFileName, setSelectedFileName] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
+    const [pdfPreviewSource, setPdfPreviewSource] = useState(null);
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
 
     const pdfInputRef = useRef(null);
     const imageInputRef = useRef(null);
@@ -1246,7 +1250,10 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
     // Manipulação de arquivos
     const handlePdfSelect = (e) => {
         const file = e.target.files?.[0];
-        if (file) handleProcessRomaneio(file, file.name);
+        if (file) {
+            setPdfPreviewSource(file);
+            handleProcessRomaneio(file, file.name);
+        }
     };
 
     const handleImageSelect = (e) => {
@@ -1432,6 +1439,26 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
                                     <span>Foto / Galeria</span>
                                 </button>
                             </div>
+
+                            {/* Botão de Visualização Rápida do PDF Anexado */}
+                            {pdfPreviewSource && (
+                                <div className="mt-2.5 flex items-center justify-between p-2 rounded-xl bg-amber-100/60 border border-amber-300">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <FileText size={15} className="text-red-600 shrink-0" />
+                                        <span className="text-xs font-bold text-amber-900 truncate">
+                                            {pdfPreviewSource.name || 'Romaneio.pdf'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPdfViewer(true)}
+                                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                                    >
+                                        <Eye size={13} />
+                                        <span>Visualizar PDF</span>
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Estado de Processamento da IA */}
                             {analyzingAi && (
@@ -1711,6 +1738,16 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
                     onClose={() => setShowCameraModal(false)}
                 />
             )}
+
+            {/* Modal de Visualização de PDF do Romaneio */}
+            <PdfViewerModal
+                visible={showPdfViewer}
+                fileSource={pdfPreviewSource}
+                title="Romaneio / Ticket de Pesagem"
+                subtitle={talhao ? `Talhão: ${talhao}` : 'Documento de Colheita'}
+                badgeText="Romaneio PDF"
+                onClose={() => setShowPdfViewer(false)}
+            />
         </div>
     );
 }
