@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import './global.css';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
+import { useAppFonts } from './services/fontLoader';
 
 // Importação das Telas Unificadas da pasta Screens
 import LoginScreen from './Screens/LoginScreen';
@@ -18,6 +20,7 @@ import RevisoesScreen from './Screens/RevisoesScreen';
 const Stack = createNativeStackNavigator();
 
 export default function W3LabsAgro() {
+  const { fontsLoaded } = useAppFonts();
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
 
@@ -30,7 +33,7 @@ export default function W3LabsAgro() {
     return subscriber; // cancela o listener ao desmontar
   }, [initializing]);
 
-  if (initializing) return null;
+  if (initializing || !fontsLoaded) return null;
 
   return (
     <NavigationContainer>

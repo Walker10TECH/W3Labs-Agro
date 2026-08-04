@@ -1,524 +1,207 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import {
+    ArrowLeft,
+    PlusCircle,
+    ListTodo,
+    CheckCheck,
+    ChevronRight,
+    CloudRain,
+    X
+} from 'lucide-react-native';
+import {
+    collection,
+    doc,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    onSnapshot,
+    query,
+    orderBy
+} from 'firebase/firestore';
 import { Chart } from 'react-google-charts';
 import { auth, db } from '../firebaseConfig';
 
-const THEME = {
-    primary: '#4CAF50',
-    primaryDark: '#388E3C',
-    secondary: '#FFFFFF',
-    background: '#F9FBF9',
-    textBlack: '#1A1D19',
-    textWhite: '#FFFFFF',
-    secondaryText: '#4A4A4A',
-    grayInput: '#F0F4F1',
-    border: '#D0D6D0',
-    error: '#E53935',
-    lightGray: '#F5F5F5'
+const parseMoeda = (val) => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? 0 : parsed;
 };
 
-const VALIDATION_CONFIG = {
-    minPercentage: 0,
-    maxPercentage: 100,
-    minMillimeters: 0,
-    maxMillimeters: 1000,
-    maxTitleLength: 100,
-    maxDescriptionLength: 500,
-    maxObservationsLength: 300,
+const formatNumero = (val, decimals = 1) => {
+    const num = parseFloat(val) || 0;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
-const ERROR_MESSAGES = {
-    REQUIRED_FIELD: 'Campo obrigatório',
-    INVALID_PERCENTAGE: 'Deve ser entre 0 e 100',
-    INVALID_RAINFALL: 'Deve ser entre 0 e 1000',
-    INVALID_NUMBER: 'Valor numérico',
-    TITLE_TOO_LONG: `Máx ${VALIDATION_CONFIG.maxTitleLength} caracteres`,
-    FUTURE_DATE: 'Data inválida (futuro)',
+const formatDate = (dateVal) => {
+    if (!dateVal) return '--/--/----';
+    const date = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+    if (isNaN(date.getTime())) return '--/--/----';
+    return date.toLocaleDateString('pt-BR');
 };
 
-const Icons = {
-    ChevronBack: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>),
-    ChevronForward: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>),
-    Add: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
-    Close: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>),
-    Calendar: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>),
-    Water: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>),
-    WaterOutline: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>),
-    ChartLine: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>),
-    ArrowUp: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>),
-    List: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>),
-    Trash: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>),
-    Tasks: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>),
-    CheckCircle: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>),
-    WeatherPouring: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path><path d="M16 20l-2 2"></path><path d="M8 20l-2 2"></path><path d="M12 20l-2 2"></path></svg>),
-    Leaf: ({ size = 24, color = "currentColor" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>)
-};
+// =========================================================================
+// 1. TELA DE ANDAMENTO DE ATIVIDADES (% DA SAFRA)
+// =========================================================================
 
-const parseMoeda = (value) => {
-    if (!value) return 0;
-    if (typeof value === 'number') return value;
-    let sanitized = value.replace(/[^0-9,.]/g, '');
-    if (sanitized.includes(',')) sanitized = sanitized.replace(/\./g, '').replace(',', '.');
-    return parseFloat(sanitized) || 0;
-};
-
-const formatDate = (date, options = {}) => {
-    if (!date) return 'Data inválida';
-    try {
-        const dateObj = date.toDate ? date.toDate() : (typeof date === 'string' ? new Date(date) : date);
-        const defaultOptions = { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' };
-        return dateObj.toLocaleDateString('pt-BR', { ...defaultOptions, ...options });
-    } catch (error) {
-        return 'Data inválida';
-    }
-};
-
-const calculateRainfallStats = (data) => {
-    if (!Array.isArray(data) || data.length === 0) return { total: 0, average: 0, max: 0, min: 0, count: 0 };
-    const values = data.map(item => parseFloat(item.milimetros) || 0);
-    const total = values.reduce((sum, val) => sum + val, 0);
-    return {
-        total: parseFloat(total.toFixed(1)),
-        average: parseFloat((total / values.length).toFixed(1)),
-        max: Math.max(...values),
-        min: Math.min(...values),
-        count: values.length
-    };
-};
-
-const Spinner = ({ color = THEME.primary }) => (
-    <div style={{
-        width: 30, height: 30, border: `4px solid ${color}40`, borderTopColor: color, borderRadius: '50%', animation: 'spin 1s linear infinite'
-    }} />
-);
-
-const CustomHeader = ({ title, onBack }) => (
-    <div style={styles.fullHeader}>
-        <div style={styles.headerContent}>
-            {onBack ? (
-                <button onClick={onBack} style={styles.backButton}>
-                    <Icons.ChevronBack size={28} color={THEME.textWhite} />
-                </button>
-            ) : <div style={{ width: 40 }} />}
-            <span style={styles.headerTitle}>{title}</span>
-            <div style={{ width: 40 }} />
-        </div>
-    </div>
-);
-
-const FabAdd = ({ onAdd }) => (
-    <div style={styles.fabContainer}>
-        <button style={styles.fabAdd} onClick={onAdd}>
-            <Icons.Add size={30} color={THEME.textWhite} />
-        </button>
-    </div>
-);
-
-const FormInput = ({ label, placeholder, value, onChangeText, required, type = 'text', maxLength, multiline, error }) => (
-    <div style={styles.inputContainer}>
-        <label style={styles.formLabel}>
-            {label} {required && <span style={{ color: THEME.primary }}>*</span>}
-        </label>
-        {multiline ? (
-            <textarea
-                style={{ ...styles.input, ...styles.textArea, ...(error ? styles.inputError : {}) }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-                maxLength={maxLength}
-            />
-        ) : (
-            <input
-                type={type}
-                inputMode={type === 'number' ? 'decimal' : 'text'}
-                style={{ ...styles.input, ...(error ? styles.inputError : {}) }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-                maxLength={maxLength}
-            />
-        )}
-        {error && <span style={styles.errorText}>{error}</span>}
-    </div>
-);
-
-const FormDate = ({ label, value, onChange }) => {
-    const dateStr = value instanceof Date && !isNaN(value) ? value.toISOString().split('T')[0] : '';
-    return (
-        <div style={styles.inputContainer}>
-            <label style={styles.formLabel}>{label}</label>
-            <div style={styles.dateBox}>
-                <div style={styles.dateIconWrapper}>
-                    <Icons.Calendar size={24} color={THEME.primary} />
-                </div>
-                <input
-                    type="date"
-                    style={styles.dateInput}
-                    value={dateStr}
-                    onChange={(e) => {
-                        if (e.target.value) {
-                            const newDate = new Date(`${e.target.value}T12:00:00`);
-                            onChange(newDate);
-                        }
-                    }}
-                />
-            </div>
-        </div>
-    );
-};
-
-const StatBox = ({ label, value, color, IconComponent }) => (
-    <div style={{ ...styles.statBox, borderColor: THEME.border }}>
-        <div style={{ ...styles.statIconBadge, backgroundColor: `${color}15` }}>
-            <IconComponent size={20} color={color} />
-        </div>
-        <div style={{ marginLeft: 12 }}>
-            <div style={{ ...styles.statValue, color }}>{value}</div>
-            <div style={styles.statLabel}>{label}</div>
-        </div>
-    </div>
-);
-
-const AddOrEditPorcentagemModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({ titulo: '', valor: '', descricao: '', dataAtualizacao: new Date() });
+export function PorcentagemListaScreen({ navigation }) {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'porcentagens', itemId));
-                if (docSnap.exists()) {
-                    const item = docSnap.data();
-                    setData({ ...item, valor: item.valor ? String(item.valor) : '', dataAtualizacao: item.dataAtualizacao?.toDate ? item.dataAtualizacao.toDate() : new Date() });
-                }
-            } catch (e) {} setLoading(false);
-        })();
-    }, [itemId]);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
 
-    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
+        const q = query(collection(db, 'users', uid, 'porcentagens'), orderBy('dataAtualizacao', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
-    const handleSave = async () => {
-        const errs = {};
-        if (!data.titulo.trim()) errs.titulo = ERROR_MESSAGES.REQUIRED_FIELD;
-        const val = parseMoeda(data.valor);
-        if (data.valor === '' || isNaN(val) || val < VALIDATION_CONFIG.minPercentage || val > VALIDATION_CONFIG.maxPercentage) errs.valor = ERROR_MESSAGES.INVALID_PERCENTAGE;
-        setErrors(errs);
-        
-        if (Object.keys(errs).length > 0) return window.alert('Aviso: Por favor, corrija os campos em destaque.');
-
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'porcentagens')).id;
-            await setDoc(doc(db, 'users', uid, 'porcentagens', id), { 
-                id, titulo: data.titulo.trim(), valor: val, descricao: data.descricao.trim(), dataAtualizacao: new Date() 
-            }, { merge: true });
-            onClose();
-        } catch (e) { window.alert('Erro: Falha ao salvar dados.'); }
-        setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Tem certeza que deseja apagar este andamento?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'porcentagens', itemId));
-            onClose();
-        }
-    };
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div style={styles.modalContent}>
-                <div style={styles.bottomSheetHandleContainer}>
-                    <div style={styles.bottomSheetHandle} />
-                </div>
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Andamento' : 'Novo Andamento'}</span>
-                    <button style={styles.closeButton} onClick={onClose}>
-                        <Icons.Close size={24} color={THEME.textBlack} />
-                    </button>
-                </div>
-
-                {loading ? <div style={styles.loadingContainer}><Spinner /></div> : (
-                    <div style={styles.modalScroll}>
-                        <FormInput label="Atividade" required placeholder="Ex: Plantio da Soja" value={data.titulo} onChangeText={v => setField('titulo', v)} maxLength={VALIDATION_CONFIG.maxTitleLength} error={errors.titulo} />
-                        <FormInput label="Progresso concluído (%)" required placeholder="0 a 100" value={data.valor} onChangeText={v => setField('valor', v.replace(/[^0-9,.]/g, ''))} type="text" maxLength={5} error={errors.valor} />
-                        <FormInput label="Observações (Opcional)" placeholder="Detalhes extras sobre a atividade..." value={data.descricao} onChangeText={v => setField('descricao', v)} multiline maxLength={VALIDATION_CONFIG.maxDescriptionLength} />
-
-                        <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                            {saving ? <Spinner color={THEME.textWhite} /> : <span style={styles.saveButtonText}>Salvar Andamento</span>}
-                        </button>
-                        
-                        {itemId && (
-                            <button style={styles.deleteButton} onClick={handleDelete}>
-                                <Icons.Trash size={18} color={THEME.error} />
-                                <span style={styles.deleteButtonText}>Excluir Andamento</span>
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const AddOrEditPluviometroModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({ milimetros: '', observacoes: '', dataMedicao: new Date() });
-
-    useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'pluviometro', itemId));
-                if (docSnap.exists()) {
-                    const item = docSnap.data();
-                    setData({ ...item, milimetros: item.milimetros ? String(item.milimetros) : '', dataMedicao: item.dataMedicao?.toDate ? item.dataMedicao.toDate() : new Date() });
-                }
-            } catch (e) {} setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
-
-    const handleSave = async () => {
-        const errs = {};
-        const mm = parseMoeda(data.milimetros);
-        if (data.milimetros === '' || isNaN(mm) || mm < VALIDATION_CONFIG.minMillimeters || mm > VALIDATION_CONFIG.maxMillimeters) errs.milimetros = ERROR_MESSAGES.INVALID_RAINFALL;
-        if (data.dataMedicao > new Date()) errs.dataMedicao = ERROR_MESSAGES.FUTURE_DATE;
-        setErrors(errs);
-        
-        if (Object.keys(errs).length > 0) return window.alert('Aviso: Por favor, corrija os campos em destaque.');
-
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'pluviometro')).id;
-            await setDoc(doc(db, 'users', uid, 'pluviometro', id), { 
-                id, milimetros: mm, observacoes: data.observacoes.trim(), dataMedicao: data.dataMedicao 
-            }, { merge: true });
-            onClose();
-        } catch (e) { window.alert('Erro: Falha ao salvar medição.'); }
-        setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Tem certeza que deseja apagar esta medição?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'pluviometro', itemId));
-            onClose();
-        }
-    };
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div style={styles.modalContent}>
-                <div style={styles.bottomSheetHandleContainer}>
-                    <div style={styles.bottomSheetHandle} />
-                </div>
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Medição' : 'Nova Medição'}</span>
-                    <button style={styles.closeButton} onClick={onClose}>
-                        <Icons.Close size={24} color={THEME.textBlack} />
-                    </button>
-                </div>
-
-                {loading ? <div style={styles.loadingContainer}><Spinner /></div> : (
-                    <div style={styles.modalScroll}>
-                        <FormDate label="Data da Medição *" value={data.dataMedicao} onChange={d => setField('dataMedicao', d)} />
-                        {errors.dataMedicao && <span style={styles.errorText}>{errors.dataMedicao}</span>}
-                        
-                        <FormInput label="Volume de Chuva (mm) *" placeholder="Ex: 15.5" value={data.milimetros} onChangeText={v => setField('milimetros', v.replace(/[^0-9,.]/g, ''))} type="text" maxLength={6} error={errors.milimetros} />
-                        <FormInput label="Observações Climáticas" placeholder="Como estava o tempo? Alguma anomalia?" value={data.observacoes} onChangeText={v => setField('observacoes', v)} multiline maxLength={VALIDATION_CONFIG.maxObservationsLength} />
-
-                        <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                            {saving ? <Spinner color={THEME.textWhite} /> : <span style={styles.saveButtonText}>Salvar Medição</span>}
-                        </button>
-                        
-                        {itemId && (
-                            <button style={styles.deleteButton} onClick={handleDelete}>
-                                <Icons.Trash size={18} color={THEME.error} />
-                                <span style={styles.deleteButtonText}>Excluir Medição</span>
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const ProgressoChart = ({ data }) => {
-    if (!data || data.length === 0) return null;
+    // Dados para o Gráfico de Barras do Google Charts
     const chartData = useMemo(() => {
-        const header = ["Atividade", "Progresso", { role: "style" }];
-        const rows = data.map(item => [item.titulo, parseFloat(item.valor) || 0, THEME.primary]);
+        if (!items || items.length === 0) return null;
+        const header = ["Atividade", "Progresso (%)", { role: "style" }];
+        const rows = items.map(item => [item.titulo, parseFloat(item.valor) || 0, '#16a34a']);
         return [header, ...rows];
-    }, [data]);
+    }, [items]);
 
     return (
-        <div style={styles.chartCard}>
-            <div style={styles.chartTitle}>Visão Geral do Andamento</div>
-            <div style={{ width: '100%', overflow: 'hidden', borderRadius: 12 }}>
-                <Chart chartType="BarChart" width="100%" height="250px" data={chartData}
-                    options={{ title: "", chartArea: { width: "65%", height: '80%' }, hAxis: { title: "Progresso (%)", minValue: 0, maxValue: 100 }, legend: { position: "none" } }}
-                />
-            </div>
-        </div>
-    );
-};
-
-const ChuvaChart = ({ data }) => {
-    if (!data || data.length < 2) return null;
-    const chartData = useMemo(() => {
-        return [
-            ['Data', 'Precipitação (mm)'],
-            ...data.map(item => {
-                const date = item.dataMedicao?.toDate ? item.dataMedicao.toDate() : new Date(item.dataMedicao);
-                return [date, parseFloat(item.milimetros) || 0];
-            })
-        ];
-    }, [data]);
-
-    return (
-        <div style={styles.chartCard}>
-            <div style={styles.chartTitle}>Histórico de Chuvas</div>
-            <div style={{ width: '100%', overflow: 'hidden', borderRadius: 12 }}>
-                <Chart chartType="AreaChart" width="100%" height="250px" data={chartData}
-                    options={{ hAxis: { format: 'dd/MM', textStyle: { color: THEME.secondaryText } }, vAxis: { minValue: 0 }, legend: { position: 'none' }, colors: [THEME.primary], chartArea: { width: '85%', height: '70%' }, backgroundColor: 'transparent' }}
-                />
-            </div>
-        </div>
-    );
-};
-
-export const PorcentagemListaScreen = ({ navigation }) => {
-    const [modal, setModal] = useState({ visible: false, itemId: null });
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!auth?.currentUser) return;
-        const q = query(collection(db, 'users', auth.currentUser.uid, 'porcentagens'), orderBy('dataAtualizacao', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    return (
-        <div style={styles.container}>
-            <div style={styles.webContainer} className="web-container-responsive">
-                <CustomHeader title="Andamento de Atividades" onBack={() => navigation?.goBack()} />
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8">
                 
-                <div style={styles.listContainer}>
-                    <ProgressoChart data={items} />
-                    
-                    {loading ? <div style={styles.loadingContainer}><Spinner /></div>
-                    : items.length === 0 ? (
-                        <div style={styles.emptyState}>
-                            <Icons.Tasks size={50} color={THEME.border} />
-                            <span style={styles.emptyTextTitle}>Nenhuma atividade</span>
-                            <span style={styles.emptyText}>Toque no botão + para registrar um novo andamento.</span>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Andamento da Safra</h1>
+                            <p className="text-xs text-slate-500">Progresso percentual de cada fase e atividade</p>
                         </div>
-                    )
-                    : (
-                        <div className="responsive-grid">
-                            {items.map(item => (
-                                <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => { setModal({ visible: true, itemId: item.id }); }}>
-                                    <div style={styles.listIconBox}>
-                                        <Icons.CheckCircle size={24} color={THEME.primary} />
-                                    </div>
-                                    <div style={styles.listContent}>
-                                        <span style={styles.listTitle} className="truncate">{item.titulo || 'Sem título'}</span>
-                                        
-                                        <div style={styles.progressBarBackground}>
-                                            <div style={{...styles.progressBarFill, width: `${parseFloat(item.valor) || 0}%` }} />
-                                        </div>
-                                        <span style={styles.listSubtitle}>{(parseFloat(item.valor) || 0).toFixed(0)}% concluído</span>
-                                    </div>
-                                    <Icons.ChevronForward size={20} color={THEME.secondaryText} />
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    </div>
+
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Nova Atividade</span>
+                    </button>
                 </div>
 
-                <FabAdd onAdd={() => { setModal({ visible: true, itemId: null }); }} />
-                {modal.visible && <AddOrEditPorcentagemModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
-            </div>
-        </div>
-    );
-};
+                {/* Chart Card */}
+                {chartData && (
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm mb-6">
+                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">
+                            Visão Geral do Progresso
+                        </h3>
+                        <div className="w-full overflow-hidden rounded-2xl">
+                            <Chart
+                                chartType="BarChart"
+                                width="100%"
+                                height="240px"
+                                data={chartData}
+                                options={{
+                                    chartArea: { width: "70%", height: '75%' },
+                                    hAxis: { minValue: 0, maxValue: 100, title: 'Concluído (%)' },
+                                    legend: { position: "none" },
+                                    backgroundColor: 'transparent'
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
 
-export const PluviometroListaScreen = ({ navigation }) => {
-    const [modal, setModal] = useState({ visible: false, itemId: null });
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!auth?.currentUser) return;
-        const q = query(collection(db, 'users', auth.currentUser.uid, 'pluviometro'), orderBy('dataMedicao', 'desc'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const stats = useMemo(() => calculateRainfallStats(items), [items]);
-
-    return (
-        <div style={styles.container}>
-            <div style={styles.webContainer} className="web-container-responsive">
-                <CustomHeader title="Controle Pluviométrico" onBack={() => navigation?.goBack()} />
-                
-                <div style={styles.listContainer}>
-                    {stats.count > 0 && (
-                        <div style={styles.statsContainer}>
-                            <div style={styles.sectionTitle}>Estatísticas (Geral)</div>
-                            <div className="responsive-stats">
-                                <StatBox label="Total" value={`${stats.total} mm`} color="#0288D1" IconComponent={Icons.Water} />
-                                <StatBox label="Média" value={`${stats.average} mm`} color="#388E3C" IconComponent={Icons.ChartLine} />
-                                <StatBox label="Máxima" value={`${stats.max} mm`} color="#F57C00" IconComponent={Icons.ArrowUp} />
-                                <StatBox label="Registros" value={stats.count} color="#5D4037" IconComponent={Icons.List} />
+                {/* List of Activities */}
+                <div className="flex-1">
+                    {loading ? (
+                        <div className="py-20 flex flex-col items-center justify-center">
+                            <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                            <span className="text-xs font-semibold text-slate-500">Carregando andamento...</span>
+                        </div>
+                    ) : items.length === 0 ? (
+                        <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                                <ListTodo size={24} />
                             </div>
+                            <h3 className="text-base font-bold text-slate-700">Nenhuma atividade cadastrada</h3>
+                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                                Toque no botão "Nova Atividade" para acompanhar o progresso das operações da fazenda.
+                            </p>
                         </div>
-                    )}
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {items.map((item) => {
+                                const prog = Math.min(100, Math.max(0, parseFloat(item.valor) || 0));
 
-                    <ChuvaChart data={items} />
-
-                    {items.length > 0 && <div style={{...styles.sectionTitle, marginTop: 10}}>Histórico de Medições</div>}
-
-                    {loading ? <div style={styles.loadingContainer}><Spinner /></div>
-                    : items.length === 0 ? (
-                        <div style={styles.emptyState}>
-                            <Icons.WeatherPouring size={56} color={THEME.border} />
-                            <span style={styles.emptyTextTitle}>Nenhuma medição</span>
-                            <span style={styles.emptyText}>Registre os índices de chuva tocando no botão + abaixo.</span>
-                        </div>
-                    )
-                    : (
-                        <div className="responsive-grid">
-                            {items.map(item => {
-                                const mm = parseFloat(item.milimetros) || 0;
-                                const color = mm < 5 ? '#66BB6A' : mm < 25 ? '#29B6F6' : mm < 50 ? '#FFA726' : '#EF5350';
                                 return (
-                                    <div key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => { setModal({ visible: true, itemId: item.id }); }}>
-                                        <div style={{...styles.listIconBox, backgroundColor: `${color}15` }}>
-                                            <Icons.WaterOutline size={26} color={color} />
+                                    <div
+                                        key={item.id}
+                                        onClick={() => setModal({ visible: true, itemId: item.id })}
+                                        className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer flex flex-col justify-between group"
+                                    >
+                                        <div>
+                                            <div className="flex items-start justify-between gap-3 mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${
+                                                        prog === 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                                                    }`}>
+                                                        {prog === 100 ? (
+                                                            <CheckCheck size={20} />
+                                                        ) : (
+                                                            <span>{prog.toFixed(0)}%</span>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-base font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                                            {item.titulo || 'Atividade'}
+                                                        </h3>
+                                                        <span className="text-[11px] text-slate-400">
+                                                            Atualizado em {formatDate(item.dataAtualizacao)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Progress Bar */}
+                                            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden mb-2">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${
+                                                        prog >= 100 ? 'bg-emerald-600' : prog >= 50 ? 'bg-emerald-500' : 'bg-amber-500'
+                                                    }`}
+                                                    style={{ width: `${prog}%` }}
+                                                />
+                                            </div>
+
+                                            {item.descricao && (
+                                                <p className="text-xs text-slate-500 italic mt-2 line-clamp-2">
+                                                    "{item.descricao}"
+                                                </p>
+                                            )}
                                         </div>
-                                        <div style={styles.listContent}>
-                                            <span style={styles.listTitle}>{mm.toFixed(1)} mm</span>
-                                            <span style={styles.listSubtitle}>{formatDate(item.dataMedicao)}</span>
+
+                                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500">
+                                            <span className={prog === 100 ? 'text-emerald-600 font-bold' : 'text-slate-500'}>
+                                                {prog === 100 ? 'Concluído' : `${(100 - prog).toFixed(0)}% restante`}
+                                            </span>
+                                            <div className="flex items-center gap-1 text-emerald-600 group-hover:translate-x-1 transition-transform">
+                                                <span>Editar</span>
+                                                <ChevronRight size={14} />
+                                            </div>
                                         </div>
-                                        <Icons.ChevronForward size={20} color={THEME.secondaryText} />
                                     </div>
                                 );
                             })}
@@ -526,151 +209,578 @@ export const PluviometroListaScreen = ({ navigation }) => {
                     )}
                 </div>
 
-                <FabAdd onAdd={() => { setModal({ visible: true, itemId: null }); }} />
-                {modal.visible && <AddOrEditPluviometroModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
+                {/* Modal de Andamento */}
+                {modal.visible && (
+                    <ModalAddOrEditPorcentagem
+                        itemId={modal.itemId}
+                        onClose={() => setModal({ visible: false, itemId: null })}
+                    />
+                )}
+
             </div>
-        </div>
-    );
-};
-
-export default function PorcentagemPluviometro() {
-    const [activeScreen, setActiveScreen] = useState(null);
-
-    useEffect(() => {
-        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-styles')) {
-            const style = document.createElement('style');
-            style.id = 'w3-agro-styles';
-            style.innerHTML = `
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                * { box-sizing: border-box; }
-                button { border: none; outline: none; cursor: pointer; background: transparent; padding: 0; }
-                input, textarea { border: none; outline: none; font-family: inherit; }
-                textarea { resize: vertical; }
-                .responsive-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 15px;
-                    width: 100%;
-                }
-                .responsive-stats {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 15px;
-                    width: 100%;
-                }
-                @media (min-width: 768px) {
-                    .responsive-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-                    .responsive-stats { grid-template-columns: repeat(4, 1fr); }
-                    .list-item-responsive { max-width: 100% !important; margin: 0 !important; }
-                    .chart-responsive { max-width: 100% !important; }
-                    .web-container-responsive { max-width: 1200px !important; }
-                    .modal-responsive { max-width: 600px !important; align-self: center !important; margin: 5vh auto !important; border-radius: 24px !important; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }, []);
-
-    if (activeScreen === 'porcentagem') return <PorcentagemListaScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
-    if (activeScreen === 'pluviometro') return <PluviometroListaScreen navigation={{ goBack: () => setActiveScreen(null) }} />;
-
-    return (
-        <div style={{...styles.container, justifyContent: 'center', alignItems: 'center', display: 'flex', flexDirection: 'column'}}>
-            <div style={{ alignItems: 'center', marginBottom: 40, display: 'flex', flexDirection: 'column' }}>
-                <Icons.Leaf size={60} color={THEME.primary} />
-                <span style={{ fontSize: 24, fontWeight: '800', color: THEME.textBlack, marginTop: 10 }}>W3Labs App</span>
-                <span style={{ fontSize: 14, color: THEME.secondaryText }}>Ambiente de testes</span>
-            </div>
-
-            <button style={styles.menuButton} onClick={() => setActiveScreen('porcentagem')}>
-                <Icons.Tasks size={20} color={THEME.primary} />
-                <span style={styles.menuButtonText}>Gestão de Andamento (%)</span>
-            </button>
-
-            <button style={styles.menuButton} onClick={() => setActiveScreen('pluviometro')}>
-                <Icons.WeatherPouring size={22} color={THEME.primary} />
-                <span style={styles.menuButtonText}>Controle Pluviométrico</span>
-            </button>
         </div>
     );
 }
 
-const styles = {
-    container: { flex: 1, backgroundColor: THEME.background, minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-    webContainer: { flex: 1, width: '100%', maxWidth: 800, alignSelf: 'center', margin: '0 auto', display: 'flex', flexDirection: 'column', position: 'relative' },
-    
-    // Header
-    fullHeader: { backgroundColor: THEME.primary, width: '100%' },
-    headerContent: { display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '15px', height: 60, maxWidth: 1200, margin: '0 auto' },
-    backButton: { padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { color: THEME.textWhite, fontSize: 22, fontWeight: '700' },
-    
-    // Lists & Empty States
-    listContainer: { padding: 16, flexGrow: 1, paddingBottom: 100, display: 'flex', flexDirection: 'column' },
-    sectionTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 12, marginLeft: 4 },
-    emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: 60, padding: '0 40px' },
-    emptyTextTitle: { color: THEME.textBlack, fontSize: 22, fontWeight: '600', marginTop: 16, marginBottom: 8 },
-    emptyText: { color: THEME.secondaryText, fontSize: 18, textAlign: 'center', lineHeight: '24px' },
-    loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 40 },
+// Modal de Andamento
+function ModalAddOrEditPorcentagem({ itemId, onClose }) {
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(!!itemId);
+    const [titulo, setTitulo] = useState('');
+    const [valor, setValor] = useState('');
+    const [descricao, setDescricao] = useState('');
 
-    // List Items
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 12px auto', padding: 16, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, cursor: 'pointer' },
-    listIconBox: { width: 48, height: 48, backgroundColor: THEME.grayInput, borderRadius: 14, display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-    listContent: { flex: 1, marginRight: 10, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    listTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 6 },
-    listSubtitle: { fontSize: 16, color: THEME.secondaryText, marginTop: 4 },
-    
-    // Progress Bar
-    progressBarBackground: { height: 6, backgroundColor: THEME.grayInput, borderRadius: 3, width: '100%', overflow: 'hidden', display: 'flex' },
-    progressBarFill: { height: '100%', backgroundColor: THEME.primary, borderRadius: 3 },
-    
-    // FAB
-    fabContainer: { position: 'absolute', right: 24, bottom: 34, display: 'flex', alignItems: 'center' },
-    fabAdd: { backgroundColor: THEME.primary, width: 60, height: 60, borderRadius: 30, display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0px 4px 5px rgba(0,0,0,0.2)' },
-    
-    // Modals
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', zIndex: 1000 },
-    modalContent: { backgroundColor: THEME.secondary, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '0 24px 24px 24px', maxHeight: '90%', width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto', display: 'flex', flexDirection: 'column' },
-    bottomSheetHandleContainer: { display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 16 },
-    bottomSheetHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#D4D4D4' },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    modalTitle: { fontSize: 24, fontWeight: '800', color: THEME.textBlack },
-    closeButton: { padding: 4, backgroundColor: THEME.lightGray, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    modalScroll: { overflowY: 'auto', paddingBottom: 30 },
-    
-    // Forms
-    inputContainer: { marginBottom: 18, display: 'flex', flexDirection: 'column' },
-    formLabel: { fontSize: 16, color: THEME.textBlack, marginBottom: 8, fontWeight: '600', marginLeft: 4 },
-    input: { backgroundColor: THEME.grayInput, borderRadius: 14, padding: '0 16px', height: 60, fontSize: 18, color: THEME.textBlack },
-    inputError: { border: `1px solid ${THEME.error}` },
-    textArea: { height: 100, paddingTop: 15 },
-    errorText: { color: THEME.error, fontSize: 12, marginTop: 6, marginLeft: 4 },
-    
-    // Date Input Form
-    dateBox: { backgroundColor: THEME.secondary, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, borderRadius: 14, display: 'flex', flexDirection: 'row', alignItems: 'center', overflow: 'hidden', height: 60, position: 'relative' },
-    dateIconWrapper: { padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightStyle: 'solid', borderRightColor: THEME.border, height: '100%' },
-    dateInput: { flex: 1, border: 'none', background: 'transparent', fontSize: 18, color: THEME.textBlack, padding: '0 16px', outline: 'none' },
-    
-    // Buttons
-    saveButton: { backgroundColor: THEME.primary, borderRadius: 14, height: 60, display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 16, marginBottom: 16, boxShadow: `0px 4px 8px ${THEME.primary}33`, width: '100%' },
-    saveButtonText: { color: THEME.textWhite, fontWeight: '700', fontSize: 20 },
-    deleteButton: { display: 'flex', flexDirection: 'row', backgroundColor: 'transparent', borderRadius: 14, height: 60, justifyContent: 'center', alignItems: 'center', width: '100%' },
-    deleteButtonText: { color: THEME.error, fontWeight: '600', fontSize: 18, marginLeft: 6 },
+    useEffect(() => {
+        if (!itemId) return;
+        (async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'porcentagens', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setTitulo(d.titulo || '');
+                    setValor(String(d.valor || ''));
+                    setDescricao(d.descricao || '');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [itemId]);
 
-    // Estatísticas (Grid 2x2)
-    statsContainer: { width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 24px auto', display: 'flex', flexDirection: 'column' },
-    statsRow: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
-    statBox: { backgroundColor: THEME.secondary, padding: 16, borderRadius: 16, width: '48%', marginBottom: 12, display: 'flex', flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border },
-    statIconBadge: { width: 36, height: 36, borderRadius: 18, display: 'flex', justifyContent: 'center', alignItems: 'center' },
-    statValue: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
-    statLabel: { fontSize: 16, color: THEME.secondaryText, fontWeight: '500' },
-    
-    // Gráficos
-    chartCard: { width: '100%', maxWidth: 600, alignSelf: 'center', margin: '0 auto 24px auto', backgroundColor: THEME.secondary, padding: 16, borderRadius: 16, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, display: 'flex', flexDirection: 'column' },
-    chartTitle: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginBottom: 16 },
+    const handleSave = async (e) => {
+        e.preventDefault();
+        const v = parseMoeda(valor);
+        if (!titulo.trim() || isNaN(v) || v < 0 || v > 100) {
+            window.alert("Informe um título e uma porcentagem válida de 0 a 100%.");
+            return;
+        }
 
-    // Wrapper Menu
-    menuButton: { display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.secondary, width: '85%', maxWidth: 400, padding: 20, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderStyle: 'solid', borderColor: THEME.border, boxShadow: '0px 2px 4px rgba(0,0,0,0.05)' },
-    menuButtonText: { fontSize: 20, fontWeight: '700', color: THEME.textBlack, marginLeft: 16 }
-};
+        setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const docId = itemId || doc(collection(db, 'users', uid, 'porcentagens')).id;
+            await setDoc(doc(db, 'users', uid, 'porcentagens', docId), {
+                id: docId,
+                titulo: titulo.trim(),
+                valor: v,
+                descricao: descricao.trim(),
+                dataAtualizacao: new Date()
+            }, { merge: true });
+
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar andamento.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!window.confirm("Deseja realmente excluir esta atividade?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'porcentagens', itemId));
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir.");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-emerald-700 text-white flex items-center justify-between">
+                    <span className="font-bold text-base">{itemId ? 'Editar Atividade' : 'Nova Atividade'}</span>
+                    <button onClick={onClose} className="p-1 rounded-lg text-emerald-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Nome da Atividade *
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                placeholder="Ex: Plantio de Soja (Safra 24/25)"
+                                value={titulo}
+                                onChange={(e) => setTitulo(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Progresso Concluído (%) *
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                required
+                                placeholder="0 a 100"
+                                value={valor}
+                                onChange={(e) => setValor(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 text-lg font-bold text-emerald-700"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Observações
+                            </label>
+                            <textarea
+                                rows={3}
+                                placeholder="Detalhes, previsões, maquinários alocados..."
+                                value={descricao}
+                                onChange={(e) => setDescricao(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+                            {itemId ? (
+                                <button
+                                    type="button"
+                                    onClick={handleDelete}
+                                    className="px-3.5 py-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <Trash2 size={16} />
+                                    <span>Excluir</span>
+                                </button>
+                            ) : <div />}
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                                >
+                                    {saving ? 'Salvando...' : 'Salvar Atividade'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// =========================================================================
+// 2. TELA DE ÍNDICE PLUVIOMÉTRICO (PluviometroListaScreen)
+// =========================================================================
+
+export function PluviometroListaScreen({ navigation }) {
+    const [medicoes, setMedicoes] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [modal, setModal] = useState({ visible: false, itemId: null });
+
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const q = query(collection(db, 'users', uid, 'pluviometro'), orderBy('dataMedicao', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setMedicoes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // Estatísticas de Chuva
+    const stats = useMemo(() => {
+        let totalMm = 0;
+        let maxMm = 0;
+
+        medicoes.forEach(m => {
+            const mm = parseMoeda(m.milimetros || 0);
+            totalMm += mm;
+            if (mm > maxMm) maxMm = mm;
+        });
+
+        const count = medicoes.length;
+        const mediaMm = count > 0 ? totalMm / count : 0;
+
+        return {
+            totalMm,
+            maxMm,
+            mediaMm,
+            count
+        };
+    }, [medicoes]);
+
+    // Dados para o Gráfico de Área do Histórico de Chuvas
+    const chartData = useMemo(() => {
+        if (!medicoes || medicoes.length < 2) return null;
+        const sortedAsc = [...medicoes].reverse();
+        return [
+            ['Data', 'Chuva (mm)'],
+            ...sortedAsc.map(item => {
+                const dateStr = formatDate(item.dataMedicao);
+                return [dateStr, parseFloat(item.milimetros) || 0];
+            })
+        ];
+    }, [medicoes]);
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("Deseja realmente excluir esta medição de chuva?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'pluviometro', id));
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir medição.");
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8">
+                
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Controle Pluviométrico</h1>
+                            <p className="text-xs text-slate-500">Registro diário de precipitações e histórico de chuvas</p>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-sky-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Nova Medição</span>
+                    </button>
+                </div>
+
+                {/* Metric Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-6">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-600 to-blue-800 text-white shadow-lg shadow-sky-950/10">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200">Total Acumulado</span>
+                        <div className="text-2xl sm:text-3xl font-black tracking-tight mt-1">{formatNumero(stats.totalMm)} <span className="text-xs font-semibold text-sky-200">mm</span></div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Média / Evento</span>
+                        <div className="text-2xl font-black text-slate-800 mt-1">{formatNumero(stats.mediaMm)} <span className="text-xs font-semibold text-slate-500">mm</span></div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Maior Chuva</span>
+                        <div className="text-2xl font-black text-sky-600 mt-1">{formatNumero(stats.maxMm)} <span className="text-xs font-semibold text-slate-500">mm</span></div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Registros</span>
+                        <div className="text-2xl font-black text-slate-800 mt-1">{stats.count} <span className="text-xs font-semibold text-slate-500">dias</span></div>
+                    </div>
+                </div>
+
+                {/* Rain Area Chart */}
+                {chartData && (
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm mb-6">
+                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">
+                            Histórico de Precipitação Acumulada
+                        </h3>
+                        <div className="w-full overflow-hidden rounded-2xl">
+                            <Chart
+                                chartType="AreaChart"
+                                width="100%"
+                                height="240px"
+                                data={chartData}
+                                options={{
+                                    hAxis: { textStyle: { color: '#64748b', fontSize: 11 } },
+                                    vAxis: { minValue: 0, title: 'mm' },
+                                    legend: { position: 'none' },
+                                    colors: ['#0284c7'],
+                                    chartArea: { width: '85%', height: '70%' },
+                                    backgroundColor: 'transparent'
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* List of Rain Measurements */}
+                <div className="flex-1">
+                    {loading ? (
+                        <div className="py-20 flex flex-col items-center justify-center">
+                            <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mb-3" />
+                            <span className="text-xs font-semibold text-slate-500">Carregando medições...</span>
+                        </div>
+                    ) : medicoes.length === 0 ? (
+                        <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                                <CloudRain size={24} />
+                            </div>
+                            <h3 className="text-base font-bold text-slate-700">Nenhuma medição registrada</h3>
+                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                                Toque no botão "Nova Medição" para anotar o volume de chuva coletado no pluviômetro.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                            {medicoes.map((item) => {
+                                const mm = parseMoeda(item.milimetros || 0);
+
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className="bg-white rounded-2xl border border-slate-200/80 p-4.5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                                    >
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                                                        <CloudRain size={18} />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-xs font-bold text-slate-800">
+                                                            {formatDate(item.dataMedicao)}
+                                                        </span>
+                                                        <div className="text-[11px] text-slate-400">
+                                                            {item.talhao || 'Pluviômetro Sede'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <span className="text-xl font-black text-sky-600">
+                                                    {formatNumero(mm)} mm
+                                                </span>
+                                            </div>
+
+                                            {item.observacoes && (
+                                                <p className="text-xs text-slate-500 italic mt-2 bg-slate-50 p-2 rounded-lg">
+                                                    "{item.observacoes}"
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center justify-end gap-2 mt-3 pt-2.5 border-t border-slate-100">
+                                            <button
+                                                onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                            >
+                                                <Pencil size={16} />
+                                                <span>Editar</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                            >
+                                                <Trash2 size={16} />
+                                                <span>Excluir</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* Modal Pluviômetro */}
+                {modal.visible && (
+                    <ModalAddOrEditPluviometro
+                        itemId={modal.itemId}
+                        onClose={() => setModal({ visible: false, itemId: null })}
+                    />
+                )}
+
+            </div>
+        </div>
+    );
+}
+
+// Modal de Pluviômetro
+function ModalAddOrEditPluviometro({ itemId, onClose }) {
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(!!itemId);
+    const [milimetros, setMilimetros] = useState('');
+    const [talhao, setTalhao] = useState('');
+    const [dataMedicao, setDataMedicao] = useState(new Date().toISOString().split('T')[0]);
+    const [observacoes, setObservacoes] = useState('');
+
+    useEffect(() => {
+        if (!itemId) return;
+        (async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'pluviometro', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setMilimetros(String(d.milimetros || ''));
+                    setTalhao(d.talhao || '');
+                    setDataMedicao(d.dataMedicao?.toDate ? d.dataMedicao.toDate().toISOString().split('T')[0] : (d.dataMedicao || new Date().toISOString().split('T')[0]));
+                    setObservacoes(d.observacoes || '');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [itemId]);
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        const mm = parseMoeda(milimetros);
+        if (isNaN(mm) || mm < 0) {
+            window.alert("Informe um volume de chuva válido em mm.");
+            return;
+        }
+
+        setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const docId = itemId || doc(collection(db, 'users', uid, 'pluviometro')).id;
+            await setDoc(doc(db, 'users', uid, 'pluviometro', docId), {
+                id: docId,
+                milimetros: mm,
+                talhao: talhao.trim() || 'Sede',
+                dataMedicao: new Date(`${dataMedicao}T12:00:00`),
+                observacoes: observacoes.trim(),
+                atualizadoEm: new Date()
+            }, { merge: true });
+
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar medição.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-sky-700 text-white flex items-center justify-between">
+                    <span className="font-bold text-base">{itemId ? 'Editar Medição de Chuva' : 'Nova Medição de Chuva'}</span>
+                    <button onClick={onClose} className="p-1 rounded-lg text-sky-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Precipitação (mm) *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: 24.5"
+                                    value={milimetros}
+                                    onChange={(e) => setMilimetros(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-lg font-bold text-sky-600 focus:outline-none focus:border-sky-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Data da Chuva *
+                                </label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={dataMedicao}
+                                    onChange={(e) => setDataMedicao(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-sky-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Ponto de Coleta / Talhão
+                            </label>
+                            <input
+                                type="text"
+                                placeholder="Ex: Pluviômetro Sede / Talhão 05"
+                                value={talhao}
+                                onChange={(e) => setTalhao(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-sky-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Observações do Tempo
+                            </label>
+                            <textarea
+                                rows={3}
+                                placeholder="Chuva mansa, granizo, vento forte..."
+                                value={observacoes}
+                                onChange={(e) => setObservacoes(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-sky-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {saving ? 'Salvando...' : 'Salvar Medição'}
+                            </button>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+}

@@ -1,732 +1,1740 @@
-import React, { useState, useEffect } from 'react';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
-import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-
-// Configuração do Firebase
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+    ArrowLeft,
+    MapPin,
+    Warehouse,
+    Tractor,
+    PlusCircle,
+    Grid,
+    Search,
+    Map,
+    Pencil,
+    Trash2,
+    X,
+    Package,
+    AlertCircle,
+    Truck,
+    CheckCircle2,
+    Compass,
+    LocateFixed,
+    Layers,
+    Navigation
+} from 'lucide-react-native';
+import {
+    collection,
+    doc,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    onSnapshot,
+    query,
+    orderBy
+} from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import OpenSourceMap from '../components/OpenSourceMap';
+import FarmMapModal from '../components/FarmMapModal';
+import CoordinatePickerModal from '../components/CoordinatePickerModal';
+import { getCurrentPosition, reverseGeocodeOSM } from '../services/locationService';
 
-// =====================================================================
-// 1️⃣ CONFIGURAÇÕES, CONSTANTES E TEMA
-// =====================================================================
-
-const THEME = {
-    primary: '#4CAF50',
-    primaryDark: '#388E3C',
-    secondary: '#FFFFFF',
-    background: '#F9FBF9',
-    textBlack: '#2C3329',
-    textWhite: '#FFFFFF',
-    secondaryText: '#4A4A4A',
-    grayInput: '#F0F4F1',
-    error: '#E53935',
+const parseMoeda = (val) => {
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? 0 : parsed;
 };
 
-const agriculturalBrands = [
-    { label: 'John Deere', value: 'John Deere' },
-    { label: 'Case IH', value: 'Case IH' },
-    { label: 'New Holland', value: 'New Holland' },
-    { label: 'Massey Ferguson', value: 'Massey Ferguson' },
-    { label: 'Valtra', value: 'Valtra' },
-    { label: 'Stara', value: 'Stara' },
-    { label: 'Jacto', value: 'Jacto' },
-    { label: 'Outra', value: 'Outra' },
-];
-
-const formatDate = (date) => {
-    if (!date) return 'N/A';
-    try {
-        const dateObj = date.toDate ? date.toDate() : (typeof date === 'string' ? new Date(date) : date);
-        return dateObj.toLocaleDateString('pt-BR');
-    } catch (error) {
-        return 'Data inválida';
-    }
+const formatMoeda = (val) => {
+    const num = parseFloat(val) || 0;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// =====================================================================
-// 2️⃣ COMPONENTES DE UI REUTILIZÁVEIS (WEB OPTIMIZED)
-// =====================================================================
-
-const CustomHeader = ({ title, onBack }) => (
-    <div style={styles.fullHeader}>
-        <div style={styles.headerContent}>
-            {onBack ? (
-                <button onClick={onBack} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={26} color={THEME.textWhite} />
-                </button>
-            ) : <div style={{ width: 36 }} />}
-            <span style={styles.headerTitle}>{title}</span>
-            <div style={{ width: 36 }} />
-        </div>
-    </div>
-);
-
-const FabAdd = ({ onAdd }) => (
-    <div style={styles.fabContainer}>
-        <button style={styles.fabAdd} onClick={onAdd}>
-            <Ionicons name="add" size={28} color={THEME.textWhite} />
-        </button>
-    </div>
-);
-
-const FormInput = ({ label, placeholder, value, onChangeText, required, type = 'text', editable = true, error, maxLength, multiline = false }) => (
-    <div style={styles.inputContainer}>
-        <span style={styles.formLabel}>{label} {required && <span style={{ color: THEME.primary }}>*</span>}</span>
-        {multiline ? (
-            <textarea
-                style={{ ...styles.input, ...( !editable ? { opacity: 0.6 } : {} ), ...( error ? { borderColor: THEME.error, borderWidth: 1 } : {} ), height: 100, resize: 'vertical' }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-                disabled={!editable}
-                maxLength={maxLength}
-            />
-        ) : (
-            <input
-                type={type}
-                style={{ ...styles.input, ...( !editable ? { opacity: 0.6 } : {} ), ...( error ? { borderColor: THEME.error, borderWidth: 1 } : {} ) }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-                disabled={!editable}
-                maxLength={maxLength}
-            />
-        )}
-        {error && <span style={styles.errorText}>{error}</span>}
-    </div>
-);
-
-const FormSelect = ({ label, placeholder, value, onValueChange, items, required, error }) => {
-    return (
-        <div style={styles.inputContainer}>
-            <span style={styles.formLabel}>{label} {required && <span style={{ color: THEME.primary }}>*</span>}</span>
-            <select
-                style={{ ...styles.selectBox, ...( error ? { borderColor: THEME.error, borderWidth: 1 } : {} ) }}
-                value={value}
-                onChange={(e) => onValueChange(e.target.value)}
-            >
-                <option value="" disabled>{placeholder}</option>
-                {items.map((item, index) => (
-                    <option key={index} value={item.value}>{item.label}</option>
-                ))}
-            </select>
-            {error && <span style={styles.errorText}>{error}</span>}
-        </div>
-    );
+const formatNumero = (val, decimals = 2) => {
+    const num = parseFloat(val) || 0;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
-const FormDate = ({ label, value, onChange }) => {
-    const dateValue = value instanceof Date && !isNaN(value) ? value.toISOString().split('T')[0] : '';
-    return (
-        <div style={styles.inputContainer}>
-            <span style={styles.formLabel}>{label}</span>
-            <input
-                type="date"
-                value={dateValue}
-                onChange={(e) => {
-                    if (e.target.value) {
-                        onChange(new Date(`${e.target.value}T12:00:00`));
-                    }
-                }}
-                style={{ ...styles.input, backgroundColor: THEME.grayInput, width: '100%', boxSizing: 'border-box', border: 'none', color: THEME.textBlack }}
-            />
-        </div>
-    );
-};
-
-const ChoiceChips = ({ options, selectedValue, onValueChange }) => (
-    <div style={{ display: 'flex', flexDirection: 'row', overflowX: 'auto', marginBottom: 15, paddingBottom: 5 }}>
-        {options.map((opt, i) => {
-            const isActive = selectedValue === opt.value;
-            return (
-                <button
-                    key={i}
-                    style={{ ...styles.chipButton, ...( isActive ? styles.chipButtonActive : {} ) }}
-                    onClick={() => onValueChange(opt.value)}
-                >
-                    <span style={{ ...styles.chipText, ...( isActive ? styles.chipTextActive : {} ) }}>{opt.label}</span>
-                </button>
-            );
-        })}
-    </div>
-);
-
-const Spinner = () => <div className="spinner" style={{width:40,height:40,borderRadius:"50%",border:`4px solid ${THEME.primary}40`,borderTopColor:THEME.primary,animation:"spin 1s linear infinite",margin:"auto"}} />;
-
-// =====================================================================
-// 3️⃣ MODAIS DE CADASTRO
-// =====================================================================
-
-const AddOrEditPropriedadeModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({
-        nome: '', proprietario: '', area: '', areaMecanizada: '', tipo: 'propria',
-        valorArrendamento: '', inicioContrato: new Date(), fimContrato: new Date(), observacoes: '',
-    });
-
-    useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'propriedades', itemId));
-                if (docSnap.exists()) {
-                    const item = docSnap.data();
-                    setData({
-                        ...item,
-                        area: item.area ? String(item.area) : '',
-                        areaMecanizada: item.areaMecanizada ? String(item.areaMecanizada) : '',
-                        valorArrendamento: item.valorArrendamento ? String(item.valorArrendamento) : '',
-                        inicioContrato: item.inicioContrato?.toDate ? item.inicioContrato.toDate() : new Date(),
-                        fimContrato: item.fimContrato?.toDate ? item.fimContrato.toDate() : new Date(),
-                    });
-                }
-            } catch (e) { window.alert('Erro: Propriedade não encontrada.'); onClose(); }
-            setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value, type = 'text') => {
-        setData(prev => ({ ...prev, [field]: type === 'numeric' ? value.replace(/[^0-9,.]/g, '') : value }));
-        if (errors[field]) setErrors(prev => ({ ...prev, [field]: null }));
-    };
-
-    const validate = () => {
-        const errs = {};
-        if (!data.nome.trim()) errs.nome = 'Nome inválido.';
-        if (!data.proprietario.trim()) errs.proprietario = 'Proprietário inválido.';
-        setErrors(errs);
-        return Object.keys(errs).length === 0;
-    };
-
-    const handleSave = async () => {
-        if (!validate()) return window.alert('Atenção: Corrija os campos destacados.');
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'propriedades')).id;
-            const payload = {
-                ...data, id,
-                area: parseFloat(data.area.replace(',', '.')) || 0,
-                areaMecanizada: parseFloat(data.areaMecanizada.replace(',', '.')) || 0,
-                valorArrendamento: data.tipo === 'arrendada' ? (parseFloat(data.valorArrendamento.replace(',', '.')) || 0) : 0,
-            };
-            await setDoc(doc(db, 'users', uid, 'propriedades', id), payload, { merge: true });
-            onClose();
-        } catch (e) { window.alert('Erro: Falha ao salvar.'); }
-        setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Deseja excluir esta propriedade?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'propriedades', itemId));
-            onClose();
-        }
-    };
-
-    if (loading) return <div style={styles.modalOverlay}><Spinner /></div>;
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive">
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Propriedade' : 'Nova Propriedade'}</span>
-                    <button style={styles.closeButton} onClick={onClose}><Ionicons name="close" size={20} /></button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 80px)' }}>
-                    <ChoiceChips
-                        options={[{ label: 'Própria', value: 'propria' }, { label: 'Arrendada', value: 'arrendada' }]}
-                        selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
-                    />
-                    <FormInput label="Nome da Propriedade" required value={data.nome} onChangeText={v => setField('nome', v)} error={errors.nome} />
-                    <FormInput label="Proprietário" required value={data.proprietario} onChangeText={v => setField('proprietario', v)} error={errors.proprietario} />
-                    <FormInput label="Área Total (ha)" type="number" value={data.area} onChangeText={v => setField('area', v, 'numeric')} />
-                    <FormInput label="Área Mecanizada (ha)" type="number" value={data.areaMecanizada} onChangeText={v => setField('areaMecanizada', v, 'numeric')} />
-
-                    {data.tipo === 'arrendada' && (
-                        <>
-                            <FormInput label="Valor Arrendamento (R$)" type="number" value={data.valorArrendamento} onChangeText={v => setField('valorArrendamento', v, 'numeric')} />
-                            <FormDate label="Início do Contrato" value={data.inicioContrato} onChange={d => setField('inicioContrato', d, 'date')} />
-                            <FormDate label="Fim do Contrato" value={data.fimContrato} onChange={d => setField('fimContrato', d, 'date')} />
-                        </>
-                    )}
-                    <FormInput label="Observações" value={data.observacoes} onChangeText={v => setField('observacoes', v)} multiline />
-
-                    <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                        {saving ? <Spinner /> : <span style={styles.saveButtonText}>Salvar Propriedade</span>}
-                    </button>
-                    {itemId && <button style={styles.deleteButton} onClick={handleDelete}><span style={styles.deleteButtonText}>Excluir Propriedade</span></button>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AddOrEditUnidadeModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({ nome: '', tipo: 'Cooperativa', contato: '', telefone: '', email: '', cnpj: '', observacoes: '' });
-
-    useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'unidades', itemId));
-                if (docSnap.exists()) setData(docSnap.data());
-            } catch (e) { } setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
-
-    const handleSave = async () => {
-        if (!data.nome.trim()) return setErrors({ nome: 'Obrigatório' });
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'unidades')).id;
-            await setDoc(doc(db, 'users', uid, 'unidades', id), { ...data, id }, { merge: true });
-            onClose();
-        } catch (e) { } setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Deseja excluir esta unidade?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'unidades', itemId));
-            onClose();
-        }
-    };
-
-    if (loading) return <div style={styles.modalOverlay}><Spinner /></div>;
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive">
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Unidade' : 'Nova Unidade'}</span>
-                    <button style={styles.closeButton} onClick={onClose}><Ionicons name="close" size={20} /></button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 80px)' }}>
-                    <ChoiceChips
-                        options={[{ label: 'Coop', value: 'Cooperativa' }, { label: 'Fornecedor', value: 'Fornecedor' }, { label: 'Cliente', value: 'Cliente' }, { label: 'Outro', value: 'Outro' }]}
-                        selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
-                    />
-                    <FormInput label="Nome da Unidade" required value={data.nome} onChangeText={v => setField('nome', v)} error={errors.nome} />
-                    <FormInput label="Contato" value={data.contato} onChangeText={v => setField('contato', v)} />
-                    <FormInput label="Telefone" type="tel" value={data.telefone} onChangeText={v => setField('telefone', v)} />
-                    <FormInput label="Email" type="email" value={data.email} onChangeText={v => setField('email', v)} />
-                    <FormInput label="Observações" value={data.observacoes} onChangeText={v => setField('observacoes', v)} multiline />
-
-                    <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                        {saving ? <Spinner /> : <span style={styles.saveButtonText}>Salvar Unidade</span>}
-                    </button>
-                    {itemId && <button style={styles.deleteButton} onClick={handleDelete}><span style={styles.deleteButtonText}>Excluir Unidade</span></button>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AddOrEditEquipamentoModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [selectedBrand, setSelectedBrand] = useState('Outra');
-    const [data, setData] = useState({
-        marca: '', modelo: '', ano: '', tipoEquipamento: 'Trator', dataAquisicao: new Date(),
-        horasUso: '', status: 'Ativo', nrChassi: '', nrSerie: '', cor: '', valor: '',
-        combustaoAtiva: false, tipoCombustivel: 'Diesel S10',
-    });
-
-    useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'inventario', itemId));
-                if (docSnap.exists()) {
-                    const item = docSnap.data();
-                    setData({
-                        ...item,
-                        horasUso: item.horasUso ? String(item.horasUso) : '',
-                        valor: item.valor ? String(item.valor) : '',
-                        dataAquisicao: item.dataAquisicao?.toDate ? item.dataAquisicao.toDate() : new Date(),
-                    });
-                    if (agriculturalBrands.some(b => b.value === item.marca)) setSelectedBrand(item.marca);
-                    else setSelectedBrand('Outra');
-                }
-            } catch (e) { } setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
-
-    const handleSave = async () => {
-        if (!data.marca.trim() || !data.modelo.trim()) return window.alert('Erro: Marca e Modelo são obrigatórios.');
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'inventario')).id;
-            const payload = {
-                ...data, id,
-                horasUso: parseFloat(String(data.horasUso).replace(',', '.')) || 0,
-                valor: parseFloat(String(data.valor).replace(',', '.')) || 0,
-            };
-            await setDoc(doc(db, 'users', uid, 'inventario', id), payload, { merge: true });
-            onClose();
-        } catch (e) { } setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Deseja excluir este equipamento?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'inventario', itemId));
-            onClose();
-        }
-    };
-
-    if (loading) return <div style={styles.modalOverlay}><Spinner /></div>;
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive">
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Equipamento' : 'Novo Equipamento'}</span>
-                    <button style={styles.closeButton} onClick={onClose}><Ionicons name="close" size={20} /></button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 80px)' }}>
-                    <ChoiceChips
-                        options={[{ label: 'Trator', value: 'Trator' }, { label: 'Colheitadeira', value: 'Colheitadeira' }, { label: 'Pulverizador', value: 'Pulverizador' }, { label: 'Outro', value: 'Outro' }]}
-                        selectedValue={data.tipoEquipamento} onValueChange={v => setField('tipoEquipamento', v)}
-                    />
-                    <FormSelect
-                        label="Marca Padrão" placeholder="Selecione"
-                        items={agriculturalBrands} value={selectedBrand}
-                        onValueChange={v => { setSelectedBrand(v); setField('marca', v === 'Outra' ? '' : v); }}
-                    />
-                    {selectedBrand === 'Outra' && <FormInput label="Especifique a Marca" required value={data.marca} onChangeText={v => setField('marca', v)} />}
-
-                    <FormInput label="Modelo" required value={data.modelo} onChangeText={v => setField('modelo', v)} />
-                    <FormInput label="Ano" type="number" maxLength={4} value={data.ano} onChangeText={v => setField('ano', v)} />
-                    <FormInput label="Número Chassi" value={data.nrChassi} onChangeText={v => setField('nrChassi', v)} />
-                    <FormInput label="Valor (R$)" type="number" value={data.valor} onChangeText={v => setField('valor', v)} />
-
-                    <div style={styles.switchBox}>
-                        <span style={styles.switchLabel}>Status Ativo</span>
-                        <input type="checkbox" checked={data.status === 'Ativo'} onChange={() => setField('status', data.status === 'Ativo' ? 'Inativo' : 'Ativo')} />
-                    </div>
-                    <div style={styles.switchBox}>
-                        <span style={styles.switchLabel}>Requer Combustível</span>
-                        <input type="checkbox" checked={data.combustaoAtiva} onChange={() => setField('combustaoAtiva', !data.combustaoAtiva)} />
-                    </div>
-
-                    {data.combustaoAtiva && (
-                        <ChoiceChips
-                            options={[{ label: 'Diesel S10', value: 'Diesel S10' }, { label: 'Diesel S500', value: 'Diesel S500' }, { label: 'Gasolina', value: 'Gasolina' }]}
-                            selectedValue={data.tipoCombustivel} onValueChange={v => setField('tipoCombustivel', v)}
-                        />
-                    )}
-
-                    <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                        {saving ? <Spinner /> : <span style={styles.saveButtonText}>Salvar Equipamento</span>}
-                    </button>
-                    {itemId && <button style={styles.deleteButton} onClick={handleDelete}><span style={styles.deleteButtonText}>Excluir Equipamento</span></button>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const AddOrEditEstoqueGeralModal = ({ itemId, onClose }) => {
-    const [saving, setSaving] = useState(false);
-    const [loading, setLoading] = useState(!!itemId);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({ nome: '', tipo: 'Semente', quantidade: '', unidade: 'sc', fornecedor: '', local: '', obs: '' });
-
-    useEffect(() => {
-        if (!itemId) return;
-        (async () => {
-            setLoading(true);
-            try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'estoqueGeral', itemId));
-                if (docSnap.exists()) {
-                    const item = docSnap.data();
-                    setData({ ...item, quantidade: item.quantidade ? String(item.quantidade) : '' });
-                }
-            } catch (e) { } setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value) => { setData(prev => ({ ...prev, [field]: value })); if (errors[field]) setErrors(prev => ({ ...prev, [field]: null })); };
-
-    const handleSave = async () => {
-        if (!data.nome.trim()) return setErrors({ nome: 'Obrigatório' });
-        setSaving(true);
-        try {
-            const uid = auth.currentUser.uid;
-            const id = itemId || doc(collection(db, 'users', uid, 'estoqueGeral')).id;
-            await setDoc(doc(db, 'users', uid, 'estoqueGeral', id), {
-                ...data, id, quantidade: parseFloat(String(data.quantidade).replace(',', '.')) || 0
-            }, { merge: true });
-            onClose();
-        } catch (e) { } setSaving(false);
-    };
-
-    const handleDelete = async () => {
-        if (window.confirm('Deseja excluir este item do estoque?')) {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'estoqueGeral', itemId));
-            onClose();
-        }
-    };
-
-    if (loading) return <div style={styles.modalOverlay}><Spinner /></div>;
-
-    return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive">
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Item' : 'Novo Item Estoque'}</span>
-                    <button style={styles.closeButton} onClick={onClose}><Ionicons name="close" size={20} /></button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 80px)' }}>
-                    <ChoiceChips
-                        options={[{ label: 'Semente', value: 'Semente' }, { label: 'Fertilizante', value: 'Fertilizante' }, { label: 'Defensivo', value: 'Defensivo' }, { label: 'Peça', value: 'Peça' }]}
-                        selectedValue={data.tipo} onValueChange={v => setField('tipo', v)}
-                    />
-                    <FormInput label="Nome do Item" required value={data.nome} onChangeText={v => setField('nome', v)} error={errors.nome} />
-                    <FormInput label="Quantidade" type="number" value={data.quantidade} onChangeText={v => setField('quantidade', v)} />
-                    <FormInput label="Unidade (Ex: sc, L, kg)" value={data.unidade} onChangeText={v => setField('unidade', v)} />
-                    <FormInput label="Fornecedor" value={data.fornecedor} onChangeText={v => setField('fornecedor', v)} />
-                    <FormInput label="Local (Ex: Galpão 1)" value={data.local} onChangeText={v => setField('local', v)} />
-                    <FormInput label="Observações" value={data.obs} onChangeText={v => setField('obs', v)} multiline />
-
-                    <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                        {saving ? <Spinner /> : <span style={styles.saveButtonText}>Salvar Estoque</span>}
-                    </button>
-                    {itemId && <button style={styles.deleteButton} onClick={handleDelete}><span style={styles.deleteButtonText}>Excluir Item</span></button>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// =====================================================================
-// 4️⃣ TELAS DE LISTAGEM
-// =====================================================================
-
-const ListScreen = ({ title, collectionName, icon, renderSubtitle, onBack }) => {
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [modal, setModal] = useState({ visible: false, itemId: null });
-
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const q = collection(db, 'users', auth.currentUser.uid, collectionName);
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => doc.data());
-            setItems(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [collectionName]);
-
-    return (
-        <div style={styles.container}>
-            <div className="web-container-responsive">
-                <CustomHeader title={title} onBack={onBack} />
-                <div style={styles.listContainer}>
-                    {loading ? <Spinner />
-                        : items.length === 0 ? <span style={styles.emptyText}>Nenhum registro encontrado.</span>
-                            : (
-                                <div className="responsive-grid">
-                                    {items.map(item => (
-                                        <button key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => { setModal({ visible: true, itemId: item.id }); }}>
-                                            <div style={styles.listIconBox}>
-                                                <MaterialCommunityIcons name={icon} size={24} color={THEME.primary} />
-                                            </div>
-                                            <div style={styles.listContent}>
-                                                <span style={styles.listTitle}>{item.nome || item.marca || 'Sem título'}</span>
-                                                <span style={styles.listSubtitle}>{renderSubtitle(item)}</span>
-                                            </div>
-                                            <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                </div>
-
-                <FabAdd onAdd={() => { setModal({ visible: true, itemId: null }); }} />
-
-                {modal.visible && collectionName === 'propriedades' && <AddOrEditPropriedadeModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
-                {modal.visible && collectionName === 'unidades' && <AddOrEditUnidadeModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
-                {modal.visible && collectionName === 'inventario' && <AddOrEditEquipamentoModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
-                {modal.visible && collectionName === 'estoqueGeral' && <AddOrEditEstoqueGeralModal itemId={modal.itemId} onClose={() => setModal({ visible: false, itemId: null })} />}
-            </div>
-        </div>
-    );
-};
-
-// =====================================================================
-// 5️⃣ TELA PRINCIPAL (GERENCIADOR)
-// =====================================================================
+// =========================================================================
+// DEFAULT EXPORT: MANAGER SCREEN (Unificado com abas)
+// =========================================================================
 
 export default function ManagerScreen({ navigation, route }) {
-    const initialView = route?.params?.initialView || 'menu';
-    const [currentView, setCurrentView] = useState(initialView);
-
-    useEffect(() => {
-        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-styles')) {
-            const style = document.createElement('style');
-            style.id = 'w3-agro-styles';
-            style.innerHTML = `
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                * { box-sizing: border-box; }
-                button { border: none; outline: none; cursor: pointer; background: transparent; padding: 0; }
-                input, textarea, select { border: none; outline: none; font-family: inherit; }
-                textarea { resize: vertical; }
-                .responsive-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 15px;
-                    width: 100%;
-                }
-                .modal-responsive {
-                    background-color: ${THEME.secondary};
-                    border-top-left-radius: 20px;
-                    border-top-right-radius: 20px;
-                    padding: 20px;
-                    max-height: 90vh;
-                    width: 100%;
-                    max-width: 800px;
-                    display: flex;
-                    flex-direction: column;
-                    box-sizing: border-box;
-                }
-                .web-container-responsive {
-                    display: flex;
-                    flex-direction: column;
-                    flex: 1;
-                    width: 100%;
-                    max-width: 800px;
-                    align-self: center;
-                    margin: 0 auto;
-                    position: relative;
-                }
-                @media (min-width: 768px) {
-                    .responsive-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-                    .list-item-responsive { max-width: 100% !important; margin: 0 !important; }
-                    .web-container-responsive { max-width: 1200px !important; }
-                    .modal-responsive { border-radius: 20px; align-self: center; margin-bottom: 5vh; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }, []);
-
-    const handleBack = initialView !== 'menu'
-        ? () => { if (navigation?.goBack) navigation.goBack(); else window.history.back(); }
-        : () => {
-            setCurrentView('menu');
-        };
-
-    if (currentView === 'propriedades') return <ListScreen title="Propriedades" collectionName="propriedades" icon="barn" renderSubtitle={i => `${i.proprietario} • ${i.tipo === 'propria' ? 'Própria' : 'Arrendada'}`} onBack={handleBack} />;
-    if (currentView === 'unidades') return <ListScreen title="Unidades/Empresas" collectionName="unidades" icon="office-building" renderSubtitle={i => `${i.tipo} • ${i.contato || i.telefone}`} onBack={handleBack} />;
-    if (currentView === 'inventario') return <ListScreen title="Inventário de Máquinas" collectionName="inventario" icon="tractor-variant" renderSubtitle={i => `${i.modelo} • ${i.ano} • ${i.status}`} onBack={handleBack} />;
-    if (currentView === 'estoque') return <ListScreen title="Estoque Geral" collectionName="estoqueGeral" icon="archive-outline" renderSubtitle={i => `${i.quantidade} ${i.unidade} • ${i.tipo}`} onBack={handleBack} />;
-
-    const menuOptions = [
-        { title: 'Propriedades', icon: 'barn', view: 'propriedades', desc: 'Gerir propriedades rurais' },
-        { title: 'Unidades / Empresas', icon: 'office-building', view: 'unidades', desc: 'Cooperativas, fornecedores e clientes' },
-        { title: 'Inventário de Equipamentos', icon: 'tractor-variant', view: 'inventario', desc: 'Tratores, implementos e máquinas' },
-        { title: 'Estoque Geral', icon: 'archive-outline', view: 'estoque', desc: 'Sementes, fertilizantes e defensivos' }
-    ];
+    const initialTab = route?.params?.initialTab || 'talhoes';
+    const [activeSection, setActiveSection] = useState(initialTab); // 'talhoes' | 'estoque' | 'maquinas'
 
     return (
-        <div style={styles.container}>
-            <div className="web-container-responsive">
-                <CustomHeader title="Gerenciador" onBack={() => { if (navigation?.goBack) navigation.goBack(); else window.history.back(); }} />
-                <div style={{ padding: 20 }}>
-                    <div className="responsive-grid">
-                        {menuOptions.map((opt, i) => (
-                            <button key={i} style={styles.managerButton} className="list-item-responsive" onClick={() => { setCurrentView(opt.view); }}>
-                                <div style={styles.managerButtonIcon}>
-                                    <MaterialCommunityIcons name={opt.icon} size={28} color={THEME.textWhite} />
-                                </div>
-                                <div style={{ flex: 1, marginLeft: 15, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                                    <span style={styles.managerButtonTitle}>{opt.title}</span>
-                                    <span style={styles.managerButtonDesc}>{opt.desc}</span>
-                                </div>
-                                <Ionicons name="chevron-forward" size={24} color={THEME.primary} />
-                            </button>
-                        ))}
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            {/* Top Global Bar for Section Switching */}
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
+                            title="Voltar ao Painel"
+                        >
+                            <ArrowLeft size={18} />
+                        </button>
+                        <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Módulo Gerencial</span>
+                            <h2 className="text-base font-black text-slate-800 tracking-tight leading-none">Gestão da Propriedade</h2>
+                        </div>
+                    </div>
+
+                    {/* Section Switcher Tabs */}
+                    <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
+                        <button
+                            onClick={() => setActiveSection('talhoes')}
+                            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                                activeSection === 'talhoes' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <MapPin size={12} />
+                            <span>Talhões</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveSection('estoque')}
+                            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                                activeSection === 'estoque' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <Warehouse size={12} />
+                            <span>Almoxarifado & Estoque</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveSection('maquinas')}
+                            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                                activeSection === 'maquinas' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            <Tractor size={12} />
+                            <span>Inventário de Máquinas</span>
+                        </button>
                     </div>
                 </div>
+            </div>
+
+            {/* Active Content */}
+            <div className="flex-1">
+                {activeSection === 'talhoes' && <TalhoesListaScreen navigation={navigation} hideHeaderBack />}
+                {activeSection === 'estoque' && <EstoqueGeralScreen navigation={navigation} hideHeaderBack />}
+                {activeSection === 'maquinas' && <InventarioMaquinasScreen navigation={navigation} hideHeaderBack />}
             </div>
         </div>
     );
 }
 
-// =====================================================================
-// 6️⃣ ESTILOS GERAIS (WEB OPTIMIZED)
-// =====================================================================
+// =========================================================================
+// 1. GESTÃO DE TALHÕES (TalhoesListaScreen)
+// =========================================================================
 
-const styles = {
-    container: { display: 'flex', flexDirection: 'column', flex: 1, backgroundColor: THEME.background, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif' },
+export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
+    const [talhoes, setTalhoes] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [modal, setModal] = useState({ visible: false, itemId: null });
+    const [showFarmMapModal, setShowFarmMapModal] = useState(false);
+    const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'map'
 
-    // Header
-    fullHeader: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center' },
-    headerContent: { width: '100%', maxWidth: 1200, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: 60, boxSizing: 'border-box' },
-    backButton: { padding: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { color: THEME.textWhite, fontSize: 22, fontWeight: 'bold' },
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
 
-    // Manager Menu
-    managerButton: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 15, boxShadow: '0px 2px 3px rgba(0,0,0,0.05)', textAlign: 'left', cursor: 'pointer', border: 'none', width: '100%', boxSizing: 'border-box' },
-    managerButtonIcon: { backgroundColor: THEME.primary, padding: 12, borderRadius: 12, display: 'flex', justifyContent: 'center', alignItems: 'center' },
-    managerButtonTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    managerButtonDesc: { fontSize: 16, color: THEME.secondaryText },
+        const q = query(collection(db, 'users', uid, 'talhoes'), orderBy('nome', 'asc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setTalhoes(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
-    // Lists
-    listContainer: { padding: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1 },
-    emptyText: { color: THEME.secondaryText, fontSize: 18, marginTop: 40 },
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, width: '100%', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, boxShadow: '0px 2px 3px rgba(0,0,0,0.05)', cursor: 'pointer', border: 'none', textAlign: 'left', boxSizing: 'border-box' },
-    listIconBox: { width: 50, height: 50, backgroundColor: THEME.grayInput, borderRadius: 25, display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: 15, flexShrink: 0 },
-    listContent: { flex: 1, display: 'flex', flexDirection: 'column' },
-    listTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    listSubtitle: { fontSize: 16, color: THEME.secondaryText },
+    const stats = useMemo(() => {
+        let areaTotalGeral = 0;
+        let mapeadosCount = 0;
+        talhoes.forEach(t => {
+            areaTotalGeral += parseMoeda(t.areaTotal || t.area || 0);
+            if (t.coordenadas) mapeadosCount++;
+        });
+        return {
+            totalTalhoes: talhoes.length,
+            mapeadosCount,
+            areaTotalGeral
+        };
+    }, [talhoes]);
 
-    // FAB
-    fabContainer: { position: 'absolute', right: 20, bottom: 30, display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    fabAdd: { backgroundColor: THEME.primary, width: 55, height: 55, borderRadius: 27.5, display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0px 2px 5px rgba(0,0,0,0.3)', border: 'none', cursor: 'pointer' },
+    const filtered = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return talhoes.filter(t => 
+            !searchQuery ||
+            t.nome?.toLowerCase().includes(q) ||
+            t.culturaAtual?.toLowerCase().includes(q) ||
+            t.tipoSolo?.toLowerCase().includes(q)
+        );
+    }, [talhoes, searchQuery]);
 
-    // Modals & Forms
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 1000 },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 24, fontWeight: 'bold', color: THEME.textBlack },
-    closeButton: { backgroundColor: THEME.grayInput, padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' },
-    inputContainer: { marginBottom: 15, display: 'flex', flexDirection: 'column' },
-    formLabel: { fontSize: 16, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: 8, padding: '12px 15px', height: 60, fontSize: 18, color: THEME.textBlack, border: '1px solid transparent', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit' },
-    errorText: { color: THEME.error, fontSize: 11, marginTop: 4 },
+    const handleDelete = async (id) => {
+        if (!window.confirm("Deseja realmente excluir este talhão?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'talhoes', id));
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir talhão.");
+        }
+    };
 
-    // Select
-    selectBox: { backgroundColor: THEME.grayInput, borderRadius: 8, padding: '14px 15px', height: 60, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', fontSize: 18, color: THEME.textBlack, border: '1px solid transparent', boxSizing: 'border-box', width: '100%', cursor: 'pointer', appearance: 'none', fontFamily: 'inherit' },
+    return (
+        <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 font-sans">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                    {!hideHeaderBack && (
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                    )}
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Gestão de Talhões</h1>
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                OpenStreetMap
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500">Mapeamento georreferenciado, áreas cultiváveis e satélite agrícola</p>
+                    </div>
+                </div>
 
-    // Date & Switch
-    switchBox: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: THEME.grayInput, padding: 15, borderRadius: 8, marginBottom: 15 },
-    switchLabel: { fontSize: 18, color: THEME.textBlack, fontWeight: '500' },
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowFarmMapModal(true)}
+                        className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                        title="Ver mapa completo em tela cheia com satélite"
+                    >
+                        <Compass size={18} className="text-emerald-400" />
+                        <span>Mapa da Propriedade</span>
+                    </button>
 
-    // Chips
-    chipButton: { backgroundColor: THEME.grayInput, padding: '8px 15px', borderRadius: 20, marginRight: 10, display: 'inline-flex', alignItems: 'center', border: 'none', cursor: 'pointer', flexShrink: 0 },
-    chipButtonActive: { backgroundColor: THEME.primary },
-    chipText: { color: THEME.secondaryText, fontWeight: 'bold', fontSize: 16 },
-    chipTextActive: { color: THEME.textWhite },
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Novo Talhão</span>
+                    </button>
+                </div>
+            </div>
 
-    // Actions
-    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, height: 60, display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 10, marginBottom: 10, border: 'none', cursor: 'pointer', width: '100%' },
-    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 20 },
-    deleteButton: { backgroundColor: 'transparent', border: `1px solid ${THEME.error}`, borderRadius: 8, height: 60, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 20, cursor: 'pointer', width: '100%' },
-    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 18 }
-};
+            {/* Metric Summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow-lg shadow-emerald-950/10">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Área Mapeada Total</span>
+                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <MapPin size={14} />
+                        </div>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight">{formatNumero(stats.areaTotalGeral)} <span className="text-sm font-semibold text-emerald-200">ha</span></div>
+                    <div className="text-xs text-emerald-100 mt-1">Soma de todos os talhões cadastrados</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Talhões Cadastrados</span>
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <Grid size={18} />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-800">{stats.totalTalhoes}</div>
+                    <div className="text-xs text-slate-500 mt-1">Glebas ativas na propriedade</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Com Localização GPS</span>
+                        <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+                            <Compass size={18} />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-teal-700">{stats.mapeadosCount} <span className="text-xs font-semibold text-slate-400">/ {stats.totalTalhoes}</span></div>
+                    <div className="text-xs text-slate-500 mt-1">Georreferenciados no satélite</div>
+                </div>
+            </div>
+
+            {/* Filter & View Switcher Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
+                <div className="relative w-full sm:w-80">
+                    <input
+                        type="text"
+                        placeholder="Buscar por nome, cultura, solo..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                    <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                </div>
+
+                {/* Switcher Cards vs Mapa */}
+                <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto self-stretch sm:self-auto">
+                    <button
+                        onClick={() => setViewMode('grid')}
+                        className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            viewMode === 'grid' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        <Grid size={14} />
+                        <span>Cards ({filtered.length})</span>
+                    </button>
+                    <button
+                        onClick={() => setViewMode('map')}
+                        className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            viewMode === 'map' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                    >
+                        <Map size={14} />
+                        <span>Mapa Satélite</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Content Display: Cards or Interactive Map */}
+            <div className="flex-1">
+                {loading ? (
+                    <div className="py-20 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                        <span className="text-xs font-semibold text-slate-500">Carregando talhões...</span>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                            <Map size={24} />
+                        </div>
+                        <h3 className="text-base font-bold text-slate-700">Nenhum talhão cadastrado</h3>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                            Clique em "Novo Talhão" para mapear os lotes e talhões da sua propriedade rural.
+                        </p>
+                    </div>
+                ) : viewMode === 'map' ? (
+                    /* Mapa Interativo Integrado */
+                    <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-xs font-bold text-slate-800">Visualização de Satélite dos Talhões</span>
+                            </div>
+                            <span className="text-[11px] text-slate-500 font-semibold">
+                                {filtered.filter(t => t.coordenadas).length} talhões com coordenadas no mapa
+                            </span>
+                        </div>
+                        <OpenSourceMap
+                            markers={filtered}
+                            selectable={false}
+                            height="540px"
+                            className="rounded-2xl"
+                        />
+                    </div>
+                ) : (
+                    /* Cards Grid */
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filtered.map((item) => {
+                            const area = parseMoeda(item.areaTotal || item.area || 0);
+
+                            return (
+                                <div
+                                    key={item.id}
+                                    className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                                >
+                                    <div>
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                                    {item.culturaAtual || 'Livre / Pousio'}
+                                                </span>
+                                                <h3 className="text-base font-bold text-slate-800 mt-1">
+                                                    {item.nome || 'Talhão sem nome'}
+                                                </h3>
+                                            </div>
+
+                                            <span className="text-lg font-black text-emerald-700">
+                                                {formatNumero(area)} ha
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3">
+                                            {item.tipoSolo && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Tipo de Solo:</span>
+                                                    <span className="font-semibold">{item.tipoSolo}</span>
+                                                </div>
+                                            )}
+                                            {item.coordenadas ? (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-slate-400">GPS:</span>
+                                                    <span className="font-semibold text-emerald-700 font-mono text-[11px] bg-emerald-50 px-2 py-0.5 rounded-md">
+                                                        📍 {item.coordenadas}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-center text-slate-400 text-[11px]">
+                                                    <span>GPS:</span>
+                                                    <span className="italic">Não georreferenciado</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {item.observacoes && (
+                                            <p className="text-xs text-slate-500 italic line-clamp-2">
+                                                "{item.observacoes}"
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => setShowFarmMapModal(true)}
+                                            className="text-emerald-700 hover:text-emerald-800 text-xs font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                                        >
+                                            <Compass size={14} />
+                                            <span>Ver no Mapa</span>
+                                        </button>
+
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={15} />
+                                                <span>Editar</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 size={15} />
+                                                <span>Excluir</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* Modal de Cadastro / Edição do Talhão */}
+            {modal.visible && (
+                <ModalAddOrEditTalhao
+                    itemId={modal.itemId}
+                    onClose={() => setModal({ visible: false, itemId: null })}
+                />
+            )}
+
+            {/* Modal de Mapa Completo da Propriedade */}
+            {showFarmMapModal && (
+                <FarmMapModal
+                    talhoes={talhoes}
+                    onClose={() => setShowFarmMapModal(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+function ModalAddOrEditTalhao({ itemId, onClose }) {
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(!!itemId);
+    const [nome, setNome] = useState('');
+    const [areaTotal, setAreaTotal] = useState('');
+    const [culturaAtual, setCulturaAtual] = useState('');
+    const [tipoSolo, setTipoSolo] = useState('');
+    const [coordenadas, setCoordenadas] = useState('');
+    const [observacoes, setObservacoes] = useState('');
+
+    const [gettingGps, setGettingGps] = useState(false);
+    const [showCoordinatePicker, setShowCoordinatePicker] = useState(false);
+
+    useEffect(() => {
+        if (!itemId) return;
+        (async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'talhoes', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setNome(d.nome || '');
+                    setAreaTotal(String(d.areaTotal || d.area || ''));
+                    setCulturaAtual(d.culturaAtual || '');
+                    setTipoSolo(d.tipoSolo || '');
+                    setCoordenadas(d.coordenadas || '');
+                    setObservacoes(d.observacoes || '');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [itemId]);
+
+    // Captura GPS Atual via Geolocation API + OpenStreetMap Nominatim
+    const handleGetGps = async () => {
+        setGettingGps(true);
+        try {
+            const pos = await getCurrentPosition();
+            const formatted = `${pos.latitude.toFixed(6)}, ${pos.longitude.toFixed(6)}`;
+            setCoordenadas(formatted);
+
+            // Tenta obter dados do endereço / município
+            const addr = await reverseGeocodeOSM(pos.latitude, pos.longitude);
+            if (addr?.city && !observacoes.includes(addr.city)) {
+                setObservacoes(prev => prev ? `${prev}\nRegião: ${addr.city} - ${addr.state}` : `Região: ${addr.city} - ${addr.state}`);
+            }
+        } catch (err) {
+            window.alert(err.message || "Não foi possível obter coordenadas GPS.");
+        } finally {
+            setGettingGps(false);
+        }
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        const areaNum = parseMoeda(areaTotal);
+        if (!nome.trim() || areaNum <= 0) {
+            window.alert("Informe o nome do talhão e a área em hectares.");
+            return;
+        }
+
+        setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const docId = itemId || doc(collection(db, 'users', uid, 'talhoes')).id;
+            await setDoc(doc(db, 'users', uid, 'talhoes', docId), {
+                id: docId,
+                nome: nome.trim(),
+                areaTotal: areaNum,
+                culturaAtual: culturaAtual.trim(),
+                tipoSolo: tipoSolo.trim(),
+                coordenadas: coordenadas.trim(),
+                observacoes: observacoes.trim(),
+                atualizadoEm: new Date()
+            }, { merge: true });
+
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar talhão.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-emerald-700 text-white flex items-center justify-between">
+                    <div>
+                        <span className="font-bold text-base block">{itemId ? 'Editar Talhão' : 'Novo Talhão'}</span>
+                        <span className="text-[11px] text-emerald-200">Cadastro Georreferenciado</span>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded-lg text-emerald-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Identificação / Nome *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: Talhão 01 - Sede"
+                                    value={nome}
+                                    onChange={(e) => setNome(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Área Total (Hectares) *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: 75.5"
+                                    value={areaTotal}
+                                    onChange={(e) => setAreaTotal(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Cultura Atual
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: Soja / Milho Safrinha"
+                                    value={culturaAtual}
+                                    onChange={(e) => setCulturaAtual(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Tipo de Solo
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: Latossolo Vermelho / Argiloso"
+                                    value={tipoSolo}
+                                    onChange={(e) => setTipoSolo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Coordenadas GPS com Ações de Mapa e GPS */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                    Coordenadas GPS (Lat, Lon)
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleGetGps}
+                                        disabled={gettingGps}
+                                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        <LocateFixed size={12} />
+                                        <span>{gettingGps ? 'Buscando...' : 'GPS Atual'}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCoordinatePicker(true)}
+                                        className="text-[11px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                    >
+                                        <MapPin size={12} />
+                                        <span>Escolher no Mapa</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Ex: -15.7942, -47.8822"
+                                value={coordenadas}
+                                onChange={(e) => setCoordenadas(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 font-mono"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                                Digite ou clique em "Escolher no Mapa" para posicionar visualmente sobre a foto de satélite da fazenda.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Observações
+                            </label>
+                            <textarea
+                                rows={2}
+                                placeholder="Histórico de calagem, declividade, curva de nível..."
+                                value={observacoes}
+                                onChange={(e) => setObservacoes(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {saving ? 'Salvando...' : 'Salvar Talhão'}
+                            </button>
+                        </div>
+                    </form>
+                )}
+            </div>
+
+            {/* Modal Seletor de Coordenadas no Mapa */}
+            {showCoordinatePicker && (
+                <CoordinatePickerModal
+                    initialCoordinates={coordenadas}
+                    onConfirm={(newCoords, addr) => {
+                        setCoordenadas(newCoords);
+                        if (addr?.city && !observacoes.includes(addr.city)) {
+                            setObservacoes(prev => prev ? `${prev}\nRegião: ${addr.city}` : `Região: ${addr.city}`);
+                        }
+                    }}
+                    onClose={() => setShowCoordinatePicker(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+// =========================================================================
+// 2. GESTÃO DE ESTOQUE GERAL / ALMOXARIFADO (EstoqueGeralScreen)
+// =========================================================================
+
+export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
+    const [estoque, setEstoque] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('todos');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [modal, setModal] = useState({ visible: false, itemId: null });
+
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const q = query(collection(db, 'users', uid, 'estoqueGeral'), orderBy('nome', 'asc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setEstoque(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const stats = useMemo(() => {
+        let valorTotalEstoque = 0;
+        let alertasEstoqueBaixo = 0;
+
+        estoque.forEach(item => {
+            const qtd = parseMoeda(item.quantidade || 0);
+            const val = parseMoeda(item.valorUnitario || 0);
+            const min = parseMoeda(item.estoqueMinimo || 0);
+
+            valorTotalEstoque += (qtd * val);
+            if (min > 0 && qtd <= min) alertasEstoqueBaixo++;
+        });
+
+        return {
+            totalItens: estoque.length,
+            valorTotalEstoque,
+            alertasEstoqueBaixo
+        };
+    }, [estoque]);
+
+    const filtered = useMemo(() => {
+        return estoque.filter(item => {
+            const matchTab = activeTab === 'todos' ? true : item.tipo === activeTab;
+            const q = searchQuery.toLowerCase();
+            const matchSearch = 
+                !searchQuery ||
+                item.nome?.toLowerCase().includes(q) ||
+                item.fabricante?.toLowerCase().includes(q) ||
+                item.localizacao?.toLowerCase().includes(q);
+
+            return matchTab && matchSearch;
+        });
+    }, [estoque, activeTab, searchQuery]);
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("Deseja realmente excluir este item do almoxarifado?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'estoqueGeral', id));
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir item.");
+        }
+    };
+
+    return (
+        <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 font-sans">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    {!hideHeaderBack && (
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                    )}
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Almoxarifado & Estoque</h1>
+                        <p className="text-xs text-slate-500">Defensivos, fertilizantes, sementes e peças de reposição</p>
+                    </div>
+                </div>
+
+                <button
+                    onClick={() => setModal({ visible: true, itemId: null })}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                >
+                    <PlusCircle size={18} />
+                    <span>Novo Item</span>
+                </button>
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow-lg shadow-emerald-950/10">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Patrimônio em Estoque</span>
+                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <Warehouse size={14} />
+                        </div>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight">R$ {formatMoeda(stats.valorTotalEstoque)}</div>
+                    <div className="text-xs text-emerald-100 mt-1">Valor acumulado de insumos armazenados</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total de Itens</span>
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <Package size={14} />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-800">{stats.totalItens}</div>
+                    <div className="text-xs text-slate-500 mt-1">SKUs cadastrados no barracão</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Alerta de Reposição</span>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${stats.alertasEstoqueBaixo > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
+                            <AlertCircle size={18} />
+                        </div>
+                    </div>
+                    <div className={`text-2xl font-black ${stats.alertasEstoqueBaixo > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                        {stats.alertasEstoqueBaixo}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">Produtos abaixo do estoque mínimo</div>
+                </div>
+            </div>
+
+            {/* Tabs & Search */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
+                <div className="flex rounded-xl bg-slate-200/80 p-1 w-full sm:w-auto overflow-x-auto">
+                    {['todos', 'Defensivo', 'Fertilizante', 'Semente', 'Peça', 'Outro'].map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                                activeTab === tab ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            {tab === 'todos' ? 'Todos' : tab}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="relative w-full sm:w-72">
+                    <input
+                        type="text"
+                        placeholder="Buscar insumo, fabricante..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                    />
+                    <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1">
+                {loading ? (
+                    <div className="py-20 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                        <span className="text-xs font-semibold text-slate-500">Carregando almoxarifado...</span>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                            <Warehouse size={24} />
+                        </div>
+                        <h3 className="text-base font-bold text-slate-700">Nenhum insumo encontrado</h3>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                            Cadastre novos produtos para gerenciar o saldo e alertas de reposição.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filtered.map((item) => {
+                            const qtd = parseMoeda(item.quantidade || 0);
+                            const min = parseMoeda(item.estoqueMinimo || 0);
+                            const isBaixo = min > 0 && qtd <= min;
+
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
+                                        isBaixo ? 'border-red-200 bg-red-50/20' : 'border-slate-200/80'
+                                    }`}
+                                >
+                                    <div>
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                                    {item.tipo || 'Insumo'}
+                                                </span>
+                                                <h3 className="text-base font-bold text-slate-800 mt-1">
+                                                    {item.nome}
+                                                </h3>
+                                                {item.fabricante && (
+                                                    <span className="text-xs text-slate-500 font-medium">
+                                                        {item.fabricante}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="text-right">
+                                                <span className={`text-lg font-black ${isBaixo ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                    {formatNumero(qtd)} {item.unidade || 'un'}
+                                                </span>
+                                                {isBaixo && (
+                                                    <div className="text-[10px] font-bold text-red-600 uppercase">
+                                                        Estoque Baixo!
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3">
+                                            {item.valorUnitario && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Preço Unitário:</span>
+                                                    <span className="font-semibold">R$ {formatMoeda(item.valorUnitario)}</span>
+                                                </div>
+                                            )}
+                                            {item.localizacao && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Localização / Galpão:</span>
+                                                    <span className="font-semibold text-slate-700">{item.localizacao}</span>
+                                                </div>
+                                            )}
+                                            {item.estoqueMinimo && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Estoque Mínimo:</span>
+                                                    <span className="font-semibold text-slate-700">{item.estoqueMinimo} {item.unidade}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {item.observacoes && (
+                                            <p className="text-xs text-slate-500 italic line-clamp-2">
+                                                "{item.observacoes}"
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => setModal({ visible: true, itemId: item.id })}
+                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                        >
+                                            <Pencil size={16} />
+                                            <span>Editar</span>
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(item.id)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                        >
+                                            <Trash2 size={16} />
+                                            <span>Excluir</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* Modal Estoque */}
+            {modal.visible && (
+                <ModalAddOrEditEstoque
+                    itemId={modal.itemId}
+                    onClose={() => setModal({ visible: false, itemId: null })}
+                />
+            )}
+        </div>
+    );
+}
+
+function ModalAddOrEditEstoque({ itemId, onClose }) {
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(!!itemId);
+    const [nome, setNome] = useState('');
+    const [tipo, setTipo] = useState('Defensivo');
+    const [quantidade, setQuantidade] = useState('');
+    const [unidade, setUnidade] = useState('L');
+    const [valorUnitario, setValorUnitario] = useState('');
+    const [estoqueMinimo, setEstoqueMinimo] = useState('');
+    const [fabricante, setFabricante] = useState('');
+    const [localizacao, setLocalizacao] = useState('');
+    const [observacoes, setObservacoes] = useState('');
+
+    useEffect(() => {
+        if (!itemId) return;
+        (async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'estoqueGeral', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setNome(d.nome || '');
+                    setTipo(d.tipo || 'Defensivo');
+                    setQuantidade(String(d.quantidade || ''));
+                    setUnidade(d.unidade || 'L');
+                    setValorUnitario(String(d.valorUnitario || ''));
+                    setEstoqueMinimo(String(d.estoqueMinimo || ''));
+                    setFabricante(d.fabricante || '');
+                    setLocalizacao(d.localizacao || '');
+                    setObservacoes(d.observacoes || '');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [itemId]);
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        const qtdNum = parseMoeda(quantidade);
+        if (!nome.trim() || isNaN(qtdNum)) {
+            window.alert("Informe o nome do item e a quantidade.");
+            return;
+        }
+
+        setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const docId = itemId || doc(collection(db, 'users', uid, 'estoqueGeral')).id;
+            await setDoc(doc(db, 'users', uid, 'estoqueGeral', docId), {
+                id: docId,
+                nome: nome.trim(),
+                tipo,
+                quantidade: qtdNum,
+                unidade,
+                valorUnitario: parseMoeda(valorUnitario),
+                estoqueMinimo: parseMoeda(estoqueMinimo),
+                fabricante: fabricante.trim(),
+                localizacao: localizacao.trim(),
+                observacoes: observacoes.trim(),
+                atualizadoEm: new Date()
+            }, { merge: true });
+
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar item no almoxarifado.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-emerald-700 text-white flex items-center justify-between">
+                    <span className="font-bold text-base">{itemId ? 'Editar Item do Estoque' : 'Novo Insumo / Item'}</span>
+                    <button onClick={onClose} className="p-1 rounded-lg text-emerald-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Nome do Produto / Item *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: Ureia Protegida"
+                                    value={nome}
+                                    onChange={(e) => setNome(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Categoria / Tipo
+                                </label>
+                                <select
+                                    value={tipo}
+                                    onChange={(e) => setTipo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="Defensivo">Defensivo Agrícola</option>
+                                    <option value="Fertilizante">Fertilizante / Adubo</option>
+                                    <option value="Semente">Sementes</option>
+                                    <option value="Peça">Peça de Reposição</option>
+                                    <option value="Combustível">Combustível / Óleo</option>
+                                    <option value="Insumo">Insumo Geral</option>
+                                    <option value="Outro">Outro</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Quantidade Atual *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: 50"
+                                    value={quantidade}
+                                    onChange={(e) => setQuantidade(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Unidade de Medida
+                                </label>
+                                <select
+                                    value={unidade}
+                                    onChange={(e) => setUnidade(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="L">Litros (L)</option>
+                                    <option value="kg">Quilos (Kg)</option>
+                                    <option value="ton">Toneladas (Ton)</option>
+                                    <option value="sc">Sacas (sc)</option>
+                                    <option value="un">Unidades (un)</option>
+                                    <option value="cx">Caixas (cx)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Valor Unitário (R$)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 145,00"
+                                    value={valorUnitario}
+                                    onChange={(e) => setValorUnitario(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Estoque Mínimo (Alerta)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 10"
+                                    value={estoqueMinimo}
+                                    onChange={(e) => setEstoqueMinimo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Fabricante / Marca
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: Bayer / Syngenta"
+                                    value={fabricante}
+                                    onChange={(e) => setFabricante(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Localização no Galpão
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: Barracão 02 - Prateleira A"
+                                    value={localizacao}
+                                    onChange={(e) => setLocalizacao(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Observações
+                            </label>
+                            <textarea
+                                rows={2}
+                                placeholder="Lote, data de validade, instruções de armazenagem..."
+                                value={observacoes}
+                                onChange={(e) => setObservacoes(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {saving ? 'Salvando...' : 'Salvar Item'}
+                            </button>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// =========================================================================
+// 3. GESTÃO DE MÁQUINAS E INVENTÁRIO (InventarioMaquinasScreen)
+// =========================================================================
+
+export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
+    const [maquinas, setMaquinas] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [modal, setModal] = useState({ visible: false, itemId: null });
+
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const q = query(collection(db, 'users', uid, 'inventario'), orderBy('marca', 'asc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setMaquinas(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const stats = useMemo(() => {
+        let valorTotalFrota = 0;
+        let operacionais = 0;
+
+        maquinas.forEach(m => {
+            valorTotalFrota += parseMoeda(m.valorEstimado || 0);
+            if (m.status !== 'Inativo' && m.status !== 'Em Manutenção') operacionais++;
+        });
+
+        return {
+            totalMaquinas: maquinas.length,
+            valorTotalFrota,
+            operacionais
+        };
+    }, [maquinas]);
+
+    const filtered = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return maquinas.filter(m => 
+            !searchQuery ||
+            m.marca?.toLowerCase().includes(q) ||
+            m.modelo?.toLowerCase().includes(q) ||
+            m.tipo?.toLowerCase().includes(q) ||
+            m.placaChassi?.toLowerCase().includes(q)
+        );
+    }, [maquinas, searchQuery]);
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("Deseja realmente excluir esta máquina da frota?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'inventario', id));
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir máquina.");
+        }
+    };
+
+    return (
+        <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8 font-sans">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    {!hideHeaderBack && (
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                    )}
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Inventário de Máquinas</h1>
+                        <p className="text-xs text-slate-500">Frota agrícola, implementos, tratores e caminhões</p>
+                    </div>
+                </div>
+
+                <button
+                    onClick={() => setModal({ visible: true, itemId: null })}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                >
+                    <PlusCircle size={18} />
+                    <span>Nova Máquina</span>
+                </button>
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow-lg shadow-emerald-950/10">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Patrimônio em Maquinário</span>
+                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                            <Tractor size={14} />
+                        </div>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight">R$ {formatMoeda(stats.valorTotalFrota)}</div>
+                    <div className="text-xs text-emerald-100 mt-1">Valor estimado da frota total</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Equipamentos Totais</span>
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <Truck size={18} />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-800">{stats.totalMaquinas}</div>
+                    <div className="text-xs text-slate-500 mt-1">Tratores, colheitadeiras e implementos</div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Operacionais em Campo</span>
+                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <CheckCircle2 size={18} />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-emerald-700">{stats.operacionais}</div>
+                    <div className="text-xs text-slate-500 mt-1">Ativos e disponíveis para trabalho</div>
+                </div>
+            </div>
+
+            {/* Search */}
+            <div className="mb-6">
+                <div className="relative w-full sm:w-80">
+                    <input
+                        type="text"
+                        placeholder="Buscar marca, modelo, chassi..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                    />
+                    <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1">
+                {loading ? (
+                    <div className="py-20 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                        <span className="text-xs font-semibold text-slate-500">Carregando frota...</span>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                            <Tractor size={24} />
+                        </div>
+                        <h3 className="text-base font-bold text-slate-700">Nenhum equipamento cadastrado</h3>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                            Clique em "Nova Máquina" para catalogar os veículos e implementos da fazenda.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filtered.map((item) => {
+                            const statusColor = 
+                                item.status === 'Em Manutenção' ? 'bg-amber-100 text-amber-800' :
+                                item.status === 'Inativo' ? 'bg-slate-200 text-slate-700' :
+                                'bg-emerald-100 text-emerald-800';
+
+                            return (
+                                <div
+                                    key={item.id}
+                                    className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                                >
+                                    <div>
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div>
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
+                                                    {item.status || 'Ativo'}
+                                                </span>
+                                                <h3 className="text-base font-bold text-slate-800 mt-1">
+                                                    {item.marca} {item.modelo}
+                                                </h3>
+                                                <div className="text-xs text-slate-500 font-medium">
+                                                    {item.tipo} {item.ano ? `(${item.ano})` : ''}
+                                                </div>
+                                            </div>
+
+                                            {item.valorEstimado && (
+                                                <span className="text-sm font-black text-slate-800">
+                                                    R$ {formatMoeda(item.valorEstimado)}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3">
+                                            {item.horimetroKm && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Horímetro / KM:</span>
+                                                    <span className="font-semibold">{item.horimetroKm} h/km</span>
+                                                </div>
+                                            )}
+                                            {item.placaChassi && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Placa / Chassi:</span>
+                                                    <span className="font-semibold text-slate-700">{item.placaChassi}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {item.observacoes && (
+                                            <p className="text-xs text-slate-500 italic line-clamp-2">
+                                                "{item.observacoes}"
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => setModal({ visible: true, itemId: item.id })}
+                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                        >
+                                            <Pencil size={16} />
+                                            <span>Editar</span>
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(item.id)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                        >
+                                            <Trash2 size={16} />
+                                            <span>Excluir</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* Modal Máquinas */}
+            {modal.visible && (
+                <ModalAddOrEditMaquina
+                    itemId={modal.itemId}
+                    onClose={() => setModal({ visible: false, itemId: null })}
+                />
+            )}
+        </div>
+    );
+}
+
+function ModalAddOrEditMaquina({ itemId, onClose }) {
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(!!itemId);
+    const [marca, setMarca] = useState('');
+    const [modelo, setModelo] = useState('');
+    const [tipo, setTipo] = useState('Trator');
+    const [ano, setAno] = useState('');
+    const [horimetroKm, setHorimetroKm] = useState('');
+    const [placaChassi, setPlacaChassi] = useState('');
+    const [status, setStatus] = useState('Ativo');
+    const [valorEstimado, setValorEstimado] = useState('');
+    const [observacoes, setObservacoes] = useState('');
+
+    useEffect(() => {
+        if (!itemId) return;
+        (async () => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'inventario', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setMarca(d.marca || '');
+                    setModelo(d.modelo || '');
+                    setTipo(d.tipo || 'Trator');
+                    setAno(String(d.ano || ''));
+                    setHorimetroKm(String(d.horimetroKm || ''));
+                    setPlacaChassi(d.placaChassi || '');
+                    setStatus(d.status || 'Ativo');
+                    setValorEstimado(String(d.valorEstimado || ''));
+                    setObservacoes(d.observacoes || '');
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [itemId]);
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!marca.trim() || !modelo.trim()) {
+            window.alert("Informe a marca e o modelo do equipamento.");
+            return;
+        }
+
+        setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const docId = itemId || doc(collection(db, 'users', uid, 'inventario')).id;
+            await setDoc(doc(db, 'users', uid, 'inventario', docId), {
+                id: docId,
+                marca: marca.trim(),
+                modelo: modelo.trim(),
+                tipo,
+                ano: ano.trim(),
+                horimetroKm: horimetroKm.trim(),
+                placaChassi: placaChassi.trim(),
+                status,
+                valorEstimado: parseMoeda(valorEstimado),
+                observacoes: observacoes.trim(),
+                atualizadoEm: new Date()
+            }, { merge: true });
+
+            onClose();
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar máquina.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-emerald-700 text-white flex items-center justify-between">
+                    <span className="font-bold text-base">{itemId ? 'Editar Equipamento' : 'Novo Equipamento / Máquina'}</span>
+                    <button onClick={onClose} className="p-1 rounded-lg text-emerald-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Marca / Fabricante *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: John Deere / Massey Ferguson"
+                                    value={marca}
+                                    onChange={(e) => setMarca(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Modelo *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: 6110J / S790"
+                                    value={modelo}
+                                    onChange={(e) => setModelo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Tipo de Maquinário
+                                </label>
+                                <select
+                                    value={tipo}
+                                    onChange={(e) => setTipo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="Trator">Trator</option>
+                                    <option value="Colheitadeira">Colheitadeira</option>
+                                    <option value="Pulverizador">Pulverizador Autopropelido</option>
+                                    <option value="Plantadeira">Plantadeira / Semeadeira</option>
+                                    <option value="Caminhão">Caminhão / Bitrem</option>
+                                    <option value="Implemento">Implemento (Grade, Subsolador...)</option>
+                                    <option value="Utilitário">Veículo Utilitário / Picape</option>
+                                    <option value="Outro">Outro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Status Operacional
+                                </label>
+                                <select
+                                    value={status}
+                                    onChange={(e) => setStatus(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="Ativo">Ativo / Operacional</option>
+                                    <option value="Em Manutenção">Em Manutenção / Oficina</option>
+                                    <option value="Inativo">Inativo / Desativado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Ano de Fabricação
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 2022"
+                                    value={ano}
+                                    onChange={(e) => setAno(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Horímetro / KM
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 1450"
+                                    value={horimetroKm}
+                                    onChange={(e) => setHorimetroKm(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Placa / Chassi / Nº Série
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: ABC-1234 / 1HD..."
+                                    value={placaChassi}
+                                    onChange={(e) => setPlacaChassi(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Valor Estimado (R$)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 650000,00"
+                                    value={valorEstimado}
+                                    onChange={(e) => setValorEstimado(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Observações
+                            </label>
+                            <textarea
+                                rows={2}
+                                placeholder="Acessórios, piloto automático, telemetria instalada..."
+                                value={observacoes}
+                                onChange={(e) => setObservacoes(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                            />
+                        </div>
+
+                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {saving ? 'Salvando...' : 'Salvar Máquina'}
+                            </button>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+}

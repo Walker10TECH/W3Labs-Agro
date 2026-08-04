@@ -1,25 +1,43 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
+import {
+    Droplets,
+    Wind,
+    CloudRain,
+    LogOut,
+    Bot,
+    ArrowLeft,
+    Settings,
+    Trash2,
+    X,
+    Paperclip,
+    Send,
+    MessageSquare,
+    Zap,
+    TrendingUp,
+    Archive,
+    Gauge,
+    MapPin,
+    SprayCan,
+    Sprout,
+    Wheat,
+    Wrench,
+    Fuel,
+    Warehouse,
+    Percent,
+    Sliders,
+    BookOpen,
+    Compass,
+    Map
+} from 'lucide-react-native';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { auth, db, signOut } from '../firebaseConfig';
+import FarmMapModal from '../components/FarmMapModal';
+import { getCurrentPosition, reverseGeocodeOSM, fetchOpenMeteoWeather } from '../services/locationService';
 
 const CONFIG = {
     GROQ_API_KEY: process.env.EXPO_PUBLIC_GROQ_API_KEY || '',
     WEATHER_API_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
     MAX_TOOL_LOOPS: 5,
-};
-
-const THEME = {
-    primary: '#4CAF50',
-    primaryDark: '#388E3C',
-    secondary: '#FFFFFF',
-    background: '#F9FBF9',
-    textBlack: '#2C3329',
-    textWhite: '#FFFFFF',
-    secondaryText: '#4A4A4A',
-    grayButton: '#F0F2F0',
-    error: '#E53935'
 };
 
 const MODES = {
@@ -126,28 +144,22 @@ const TOOLS_IMPLEMENTATION = {
     },
 };
 
-const convertFileToBase64 = async (file) => {
-    return new Promise((resolve, reject) => {
-        if (!file) return reject(new Error('File object not found'));
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-    });
-};
-
 const SimpleMarkdown = ({ text, isSystem }) => {
     const formatText = (content) => {
         if (!content) return "";
-        let html = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        let html = content.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-emerald-400">$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em class="italic text-slate-300">$1</em>');
+        html = html.replace(/`([^`]+)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-300">$1</code>');
         html = html.replace(/\n/g, '<br/>');
         return html;
     };
     return (
         <span 
-            className="markdown-text" 
-            style={isSystem ? { fontSize: 12, fontStyle: 'italic', color: THEME.secondaryText } : {}}
+            className={`leading-relaxed ${
+                isSystem 
+                    ? 'text-[11px] italic text-slate-400' 
+                    : 'text-[13px] text-slate-100'
+            }`}
             dangerouslySetInnerHTML={{ __html: formatText(text) }} 
         />
     );
@@ -156,37 +168,66 @@ const SimpleMarkdown = ({ text, isSystem }) => {
 const SettingsModal = ({ visible, onClose, currentModel, onSelectModel, location, onRequestLocation, locationLoading }) => {
     if (!visible) return null;
     return (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive" style={{ maxWidth: 500 }}>
-                <div className="modal-header">
-                    <span className="modal-title">Configurações</span>
-                    <button className="icon-btn" onClick={onClose}><Ionicons name="close" size={24} color={THEME.secondaryText} /></button>
-                </div>
-                <div style={{ padding: 20, overflowY: 'auto' }}>
-                    <div style={{ fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 15 }}>Motor de Inferência (Groq)</div>
-                    {APPROVED_MODELS.map((model) => (
-                        <button key={model.id} className={`model-option-card ${currentModel === model.id ? 'active' : ''}`} onClick={() => onSelectModel(model.id)}>
-                            <div style={{ flex: 1, textAlign: 'left' }}>
-                                <div style={{ fontWeight: 'bold', fontSize: 14, color: currentModel === model.id ? THEME.primary : THEME.textBlack }}>{model.name}</div>
-                                <div style={{ fontSize: 12, color: THEME.secondaryText, marginTop: 4 }}>{model.desc}</div>
-                            </div>
-                            <div className={`radio-outer ${currentModel === model.id ? 'active' : ''}`}>
-                                {currentModel === model.id && <div className="radio-inner" />}
-                            </div>
-                        </button>
-                    ))}
-                    <div style={{ height: 30 }} />
-                    <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 15 }}>Dados da Sessão</div>
-                    <button className="location-btn" onClick={onRequestLocation} disabled={locationLoading}>
-                        <Ionicons name="location-outline" size={24} color={THEME.secondaryText} />
-                        <div style={{ marginLeft: 15, flex: 1, textAlign: 'left' }}>
-                            <div style={{ fontWeight: 'bold', color: THEME.textBlack, fontSize: 14 }}>Localização</div>
-                            <div style={{ color: THEME.secondaryText, fontSize: 13 }}>
-                                {locationLoading ? 'Buscando...' : location ? `${location.city || 'N/A'}, ${location.region || 'N/A'} - ${location.country || 'N/A'}` : 'Toque para buscar... (habilite a permissão)'}
-                            </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-modal flex flex-col max-h-[90vh]" style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1a2744 100%)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                            <Settings size={16} className="text-white" />
                         </div>
-                        {locationLoading && <div className="spinner" style={{ width: 16, height: 16 }} />}
+                        <span className="font-bold text-base text-white">Configurações da IA</span>
+                    </div>
+                    <button className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer" onClick={onClose}>
+                        <X size={20} />
                     </button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-6">
+                    <div>
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Motor de Inferência</div>
+                        {APPROVED_MODELS.map((model) => (
+                            <button 
+                                key={model.id} 
+                                className="w-full p-4 rounded-xl flex items-center justify-between text-left transition-all cursor-pointer"
+                                style={{
+                                    background: currentModel === model.id ? 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))' : 'rgba(255,255,255,0.04)',
+                                    border: currentModel === model.id ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(255,255,255,0.07)',
+                                }}
+                                onClick={() => onSelectModel(model.id)}
+                            >
+                                <div className="flex-1 pr-3">
+                                    <div className={`font-bold text-sm ${currentModel === model.id ? 'text-emerald-400' : 'text-slate-200'}`}>{model.name}</div>
+                                    <div className="text-xs text-slate-500 mt-1">{model.desc}</div>
+                                </div>
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${currentModel === model.id ? 'border-emerald-500' : 'border-slate-600'}`}>
+                                    {currentModel === model.id && <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div>
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Localização GPS</div>
+                        <button 
+                            className="w-full p-4 rounded-xl flex items-center gap-3 transition-all text-left cursor-pointer"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+                            onClick={onRequestLocation} 
+                            disabled={locationLoading}
+                        >
+                            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                                <MapPin size={20} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-xs font-semibold text-slate-200">Localização Atual</div>
+                                <div className="text-xs text-slate-500 truncate mt-0.5">
+                                    {locationLoading ? 'Buscando sinal GPS...' : location ? `${location.city || 'N/A'}, ${location.region || 'N/A'} — ${location.country || 'BR'}` : 'Toque para obter localização'}
+                                </div>
+                            </div>
+                            {locationLoading 
+                                ? <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                                : <div className="text-emerald-400 opacity-60"><MapPin size={14} /></div>
+                            }
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -194,20 +235,48 @@ const SettingsModal = ({ visible, onClose, currentModel, onSelectModel, location
 };
 
 const WelcomeView = React.memo(({ onModeChange }) => (
-    <div className="chatbot-welcome-container">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-            <MaterialCommunityIcons name="robot-happy-outline" size={64} color={THEME.primary} />
-            <div className="chatbot-welcome-title">Olá! Sou a AgronomIA</div>
-            <div className="chatbot-welcome-subtitle">Sua assistente W3Labs (Powered by Groq).</div>
+    <div className="flex-1 flex flex-col justify-center items-center p-8 text-center animate-fadeIn">
+        {/* Logo animado */}
+        <div className="relative mb-6">
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl" style={{ background: 'linear-gradient(135deg,#10b981 0%,#065f46 100%)' }}>
+                <Bot size={48} className="text-white" />
+            </div>
+            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 border-2 border-[#0f172a] flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-white animate-ping" />
+            </div>
         </div>
-        <div style={{ width: '100%', marginTop: 32 }}>
-            <button className="chatbot-prompt-card" onClick={() => onModeChange(MODES.AI)}>
-                <span className="chatbot-prompt-text">Fazer uma pergunta por texto</span>
-                <Ionicons name="chatbubbles-outline" size={24} color={THEME.primary} />
+
+        <h3 className="text-2xl font-black text-white tracking-tight">AgronomIA</h3>
+        <p className="text-sm text-slate-400 mt-1.5 max-w-[220px] leading-relaxed">Assistente agrícola inteligente · Groq Engine</p>
+
+        <div className="w-full mt-8 space-y-2.5">
+            <button 
+                className="w-full p-4 rounded-2xl flex items-center gap-4 text-left transition-all group cursor-pointer"
+                style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}
+                onClick={() => onModeChange(MODES.AI)}
+            >
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-500/30 transition-colors">
+                    <MessageSquare size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                    <div className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">Fazer uma pergunta</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Chat livre com a IA</div>
+                </div>
+                <div className="text-slate-600"><Zap size={16} /></div>
             </button>
-            <button className="chatbot-prompt-card" onClick={() => onModeChange(MODES.OPTIONS)}>
-                <span className="chatbot-prompt-text">Ver ações rápidas e mercado</span>
-                <Ionicons name="flash-outline" size={24} color={THEME.primary} />
+            <button 
+                className="w-full p-4 rounded-2xl flex items-center gap-4 text-left transition-all group cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                onClick={() => onModeChange(MODES.OPTIONS)}
+            >
+                <div className="w-10 h-10 rounded-xl bg-white/10 text-slate-300 flex items-center justify-center flex-shrink-0 group-hover:bg-white/20 transition-colors">
+                    <TrendingUp size={20} />
+                </div>
+                <div className="flex-1 text-left">
+                    <div className="text-sm font-bold text-white group-hover:text-slate-200 transition-colors">Consultas rápidas</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Cotações, relatórios e análises</div>
+                </div>
+                <div className="text-slate-600"><Zap size={16} /></div>
             </button>
         </div>
     </div>
@@ -215,19 +284,27 @@ const WelcomeView = React.memo(({ onModeChange }) => (
 
 const OptionsView = React.memo(({ onOptionSelect }) => {
     const analysisOptions = [
-        { label: 'Cotação Soja', query: 'Qual a cotação da soja hoje?', icon: 'trending-up-outline' },
-        { label: 'Histórico Chuva', query: 'Relatório do meu histórico de chuva', icon: 'rainy-outline' },
-        { label: 'Estoque', query: 'Análise do meu estoque geral', icon: 'archive-outline' },
-        { label: 'Consumo Diesel', query: 'Análise do consumo de diesel', icon: 'speedometer-outline' },
+        { label: 'Cotação Soja', desc: 'Preço hoje', query: 'Qual a cotação da soja hoje?', icon: TrendingUp, color: '#10b981' },
+        { label: 'Histórico Chuva', desc: 'Pluviometria', query: 'Relatório do meu histórico de chuva', icon: CloudRain, color: '#3b82f6' },
+        { label: 'Estoque', desc: 'Análise geral', query: 'Análise do meu estoque geral', icon: Archive, color: '#f59e0b' },
+        { label: 'Diesel', desc: 'Consumo', query: 'Análise do consumo de diesel', icon: Gauge, color: '#ef4444' },
     ];
     return (
-        <div style={{ padding: 15, overflowY: 'auto' }}>
-            <div style={{ fontSize: 16, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 15, marginTop: 10 }}>Análises Rápidas</div>
-            <div className="quick-options-grid">
+        <div className="p-5 overflow-y-auto animate-fadeIn flex-1">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-4">Consultas Prontas</div>
+            <div className="grid grid-cols-2 gap-3">
                 {analysisOptions.map(item => (
-                    <button key={item.label} className="chatbot-quick-option" onClick={() => onOptionSelect(item.query)}>
-                        <Ionicons name={item.icon} size={28} color={THEME.primary} />
-                        <span className="chatbot-quick-option-text">{item.label}</span>
+                    <button 
+                        key={item.label} 
+                        className="p-4 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer hover:scale-[1.03] active:scale-95"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                        onClick={() => onOptionSelect(item.query)}
+                    >
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-lg" style={{ background: `${item.color}22`, border: `1px solid ${item.color}44` }}>
+                            <item.icon size={24} style={{ color: item.color }} />
+                        </div>
+                        <span className="text-xs font-bold text-white">{item.label}</span>
+                        <span className="text-[11px] text-slate-500 mt-0.5">{item.desc}</span>
                     </button>
                 ))}
             </div>
@@ -261,16 +338,17 @@ const AgronomiaChatbot = ({ onClose }) => {
     const requestLocation = useCallback(async () => {
         setLocationLoading(true);
         try {
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                window.alert("A permissão de localização é necessária.");
-                return;
-            }
-            let currentLocation = await Location.getCurrentPositionAsync({});
-            let geocode = await Location.reverseGeocodeAsync(currentLocation.coords);
-            if (geocode && geocode.length > 0) setLocation(geocode[0]);
+            const pos = await getCurrentPosition();
+            const addr = await reverseGeocodeOSM(pos.latitude, pos.longitude);
+            setLocation({
+                city: addr.city || 'Local Desconhecido',
+                region: addr.state || '',
+                country: addr.country || 'Brasil',
+                latitude: pos.latitude,
+                longitude: pos.longitude
+            });
         } catch (error) {
-            console.error("GPS Error: ", error);
+            console.warn("GPS/Geocoding OSM Info:", error?.message);
         } finally {
             setLocationLoading(false);
         }
@@ -346,7 +424,7 @@ const AgronomiaChatbot = ({ onClose }) => {
                         const fnName = call.function.name;
                         const fnArgs = JSON.parse(call.function.arguments);
 
-                        setMessages(prev => [...prev, { id: Date.now() + '_sys_' + Math.random(), role: 'system', sender: 'system', text: `⚙️ Consultando: ${fnName}...` }]);
+                        setMessages(prev => [...prev, { id: Date.now() + '_sys_' + Math.random(), role: 'system', sender: 'system', text: `⚙️ Consultando banco da fazenda: ${fnName}...` }]);
 
                         let result = JSON.stringify({ error: "Ferramenta falhou ou não implementada" });
                         if (TOOLS_IMPLEMENTATION[fnName]) result = await TOOLS_IMPLEMENTATION[fnName](fnArgs);
@@ -376,81 +454,176 @@ const AgronomiaChatbot = ({ onClose }) => {
     };
 
     return (
-        <div className="chatbot-popup-container">
-            <div className="chatbot-header">
-                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-                    {chatMode !== MODES.WELCOME && (
-                        <button onClick={() => setChatMode(MODES.WELCOME)} className="icon-btn" style={{ marginRight: 10 }}>
-                            <Ionicons name="arrow-back" size={24} color={THEME.secondaryText} />
-                        </button>
-                    )}
-                    <div>
-                        <div className="chatbot-title">AgronomIA</div>
-                        <div style={{ fontSize: 11, color: THEME.textBlack, opacity: 0.7, marginTop: 4 }}>
-                            {location ? `📍 ${location.city}` : 'W3Labs / Groq Engine'}
+        <div
+            className="w-full sm:max-w-[420px] flex flex-col overflow-hidden animate-modal"
+            style={{
+                height: 'min(680px, 90vh)',
+                background: 'linear-gradient(160deg, #0f172a 0%, #0d1f3c 50%, #0a1628 100%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '1.75rem',
+                boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(16,185,129,0.12)',
+            }}
+        >
+            {/* Header premium */}
+            <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="px-5 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        {chatMode !== MODES.WELCOME && (
+                            <button
+                                onClick={() => setChatMode(MODES.WELCOME)}
+                                className="w-8 h-8 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                        )}
+                        <div className="flex items-center gap-2.5">
+                            <div className="relative">
+                                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}>
+                                    <Bot size={20} className="text-white" />
+                                </div>
+                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2" style={{ borderColor: '#0f172a' }} />
+                            </div>
+                            <div>
+                                <div className="font-black text-sm text-white tracking-wide">AgronomIA</div>
+                                <div className="text-[11px] text-slate-500">
+                                    {location ? `📍 ${location.city}` : 'W3Labs · Groq Engine'}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'row' }}>
-                    <button onClick={() => setShowSettings(true)} className="icon-btn">
-                        <Ionicons name="settings-outline" size={24} color={THEME.secondaryText} />
-                    </button>
-                    {messages.length > 0 && chatMode === MODES.AI && (
-                        <button onClick={handleClearChat} className="icon-btn">
-                            <Ionicons name="trash-outline" size={22} color={THEME.secondaryText} />
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setShowSettings(true)}
+                            className="w-8 h-8 rounded-xl text-slate-500 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
+                            title="Configurações"
+                        >
+                            <Settings size={17} />
                         </button>
-                    )}
-                    <button onClick={onClose} className="icon-btn">
-                        <Ionicons name="close" size={24} color={THEME.secondaryText} />
-                    </button>
+                        {messages.length > 0 && chatMode === MODES.AI && (
+                            <button
+                                onClick={handleClearChat}
+                                className="w-8 h-8 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-400/10 flex items-center justify-center transition-all cursor-pointer"
+                                title="Limpar Conversa"
+                            >
+                                <Trash2 size={17} />
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            className="w-8 h-8 rounded-xl text-slate-500 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
+                            title="Fechar"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Body */}
+            <div className="flex-1 flex flex-col overflow-hidden">
                 {chatMode === MODES.WELCOME && <WelcomeView onModeChange={setChatMode} />}
                 {chatMode === MODES.OPTIONS && <OptionsView onOptionSelect={(q) => handleSend(q)} />}
 
                 {chatMode === MODES.AI && (
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <div className="chat-messages-container" style={{ flex: 1, overflowY: 'auto', padding: 15 }}>
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
                             {messages.map((item) => (
-                                <div key={item.id} className={`message-bubble ${item.sender === 'user' ? 'user-message' : item.sender === 'system' ? 'system-message' : 'bot-message'}`}>
-                                    {item.fileData && (
-                                        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 8, opacity: 0.8 }}>
-                                            <Ionicons name="document-attach" size={16} color={item.sender === 'user' ? THEME.textWhite : THEME.textBlack} />
-                                            <span style={{ fontSize: 11, marginLeft: 5, color: item.sender === 'user' ? THEME.textWhite : THEME.textBlack }}>
-                                                {item.fileData.name}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <SimpleMarkdown text={item.text || " "} isSystem={item.sender === 'system'} />
-                                    {item.usage && (
-                                        <div style={{ fontSize: 9, color: item.sender === 'user' ? THEME.textWhite : THEME.secondaryText, opacity: 0.7, marginTop: 5, textAlign: 'right' }}>
-                                            ⚡ {item.usage.duration}s | Tks: {item.usage.tokens}
-                                        </div>
-                                    )}
+                                <div
+                                    key={item.id}
+                                    className={`flex ${
+                                        item.sender === 'user' ? 'justify-end' :
+                                        item.sender === 'system' ? 'justify-center' : 'justify-start'
+                                    }`}
+                                >
+                                    <div
+                                        className={`${
+                                            item.sender === 'user'
+                                                ? 'max-w-[82%] px-4 py-3 rounded-2xl rounded-br-md'
+                                                : item.sender === 'system'
+                                                ? 'px-4 py-1.5 rounded-full text-center'
+                                                : 'max-w-[85%] px-4 py-3 rounded-2xl rounded-bl-md'
+                                        }`}
+                                        style={{
+                                            background: item.sender === 'user'
+                                                ? 'linear-gradient(135deg,#10b981,#059669)'
+                                                : item.sender === 'system'
+                                                ? 'rgba(255,255,255,0.05)'
+                                                : 'rgba(255,255,255,0.07)',
+                                            border: item.sender === 'system' ? '1px solid rgba(255,255,255,0.07)' :
+                                                    item.sender !== 'user' ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                                            boxShadow: item.sender === 'user' ? '0 4px 16px rgba(16,185,129,0.3)' : 'none',
+                                        }}
+                                    >
+                                        {item.fileData && (
+                                            <div className="flex items-center gap-1.5 mb-2 pb-2 text-xs font-medium text-white/60" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                                <Paperclip size={14} />
+                                                <span className="truncate">{item.fileData.name}</span>
+                                            </div>
+                                        )}
+                                        <SimpleMarkdown text={item.text || ' '} isSystem={item.sender === 'system'} />
+                                        {item.usage && (
+                                            <div className="text-[10px] text-slate-600 mt-2 text-right">
+                                                ⚡ {item.usage.duration}s · {item.usage.tokens} tokens
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
+                            {loading && (
+                                <div className="flex justify-start">
+                                    <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div ref={chatEndRef} />
                         </div>
-                        <div className="chat-input-container">
-                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-                            <button onClick={() => fileInputRef.current?.click()} style={{ padding: 10, background: 'none', border: 'none', cursor: 'pointer' }}>
-                                <Ionicons name="attach" size={24} color={attachedFile ? THEME.primary : THEME.secondaryText} />
+
+                        {/* Input Footer */}
+                        <div className="flex-shrink-0 p-3 flex items-end gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
+                                    attachedFile ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-500 hover:text-slate-300 hover:bg-white/10'
+                                }`}
+                                title="Anexar Arquivo"
+                            >
+                                <Paperclip size={20} />
                             </button>
                             <textarea
-                                className="chat-input"
+                                className="flex-1 rounded-2xl px-4 py-2.5 text-sm resize-none focus:outline-none"
+                                style={{
+                                    background: 'rgba(255,255,255,0.07)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    color: '#f1f5f9',
+                                    minHeight: '42px',
+                                    maxHeight: '96px',
+                                }}
                                 value={inputText}
                                 onChange={(e) => setInputText(e.target.value)}
-                                placeholder={attachedFile ? "Arquivo pronto. O que fazer?" : "Pergunte à AgronomIA..."}
+                                placeholder={attachedFile ? `📎 ${attachedFile.name}` : 'Pergunte à AgronomIA...'}
                                 disabled={loading}
-                                onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                                rows={1}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                             />
-                            {(inputText.trim().length > 0 || attachedFile) && (
-                                <button onClick={() => handleSend()} disabled={loading} className="chatbot-send-button" style={loading ? { opacity: 0.6 } : {}}>
-                                    {loading ? <div className="spinner" style={{ width: 20, height: 20, borderColor: `${THEME.textWhite}40`, borderTopColor: THEME.textWhite }} /> : <Ionicons name="send" size={20} color={THEME.textWhite} />}
-                                </button>
-                            )}
+                            <button
+                                onClick={() => handleSend()}
+                                disabled={loading || (!inputText.trim() && !attachedFile)}
+                                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all cursor-pointer disabled:opacity-40"
+                                style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}
+                            >
+                                {loading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <Send size={17} className="text-white" />
+                                )}
+                            </button>
                         </div>
                     </div>
                 )}
@@ -473,7 +646,9 @@ export default function Dashboard({ navigation }) {
     const [weather, setWeather] = useState({ temp: '--', desc: 'Buscando clima...', humidity: '--', wind: '--', rain: '--' });
     const [location, setLocation] = useState(null);
     const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-    const userName = auth.currentUser?.displayName || "Usuário";
+    const [showFarmMap, setShowFarmMap] = useState(false);
+    const [talhoesList, setTalhoesList] = useState([]);
+    const userName = auth.currentUser?.displayName || "Produtor";
 
     const handleLogout = async () => {
         try {
@@ -484,194 +659,227 @@ export default function Dashboard({ navigation }) {
         }
     };
 
+    // Carrega talhões para o visualizador de mapas
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        (async () => {
+            try {
+                const snap = await getDocs(query(collection(db, 'users', uid, 'talhoes'), orderBy('nome', 'asc')));
+                setTalhoesList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (e) {
+                console.error("Erro ao carregar talhões no dashboard:", e);
+            }
+        })();
+    }, []);
+
+    // Busca Clima e Localização via Open-Source APIs (OpenStreetMap + Open-Meteo)
     useEffect(() => {
         (async () => {
             try {
-                let { status } = await Location.requestForegroundPermissionsAsync();
-                if (status !== 'granted') {
-                    setWeather({ ...weather, desc: 'Permissão negada' });
-                    return;
+                const pos = await getCurrentPosition();
+                
+                // Geocodificação OpenStreetMap Nominatim
+                const addr = await reverseGeocodeOSM(pos.latitude, pos.longitude);
+                if (addr?.city) {
+                    setLocation({
+                        city: addr.city,
+                        region: addr.state || addr.country
+                    });
                 }
-                let loc = await Location.getCurrentPositionAsync({});
-                let geocode = await Location.reverseGeocodeAsync(loc.coords);
-                if (geocode.length > 0) setLocation(geocode[0]);
 
-                if (CONFIG.WEATHER_API_KEY) {
-                    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&appid=${CONFIG.WEATHER_API_KEY}&units=metric&lang=pt_br`);
-                    const data = await res.json();
-                    if (data.main) {
-                        setWeather({
-                            temp: Math.round(data.main.temp),
-                            desc: data.weather[0].description,
-                            humidity: data.main.humidity,
-                            wind: Math.round(data.wind.speed * 3.6),
-                            rain: data.rain ? data.rain['1h'] || 0 : 0
-                        });
-                    }
+                // Clima em tempo real Open-Meteo (Open-Source)
+                const meteo = await fetchOpenMeteoWeather(pos.latitude, pos.longitude);
+                if (meteo) {
+                    setWeather({
+                        temp: meteo.temp,
+                        desc: meteo.desc,
+                        humidity: meteo.humidity,
+                        wind: meteo.windSpeed,
+                        rain: meteo.precipitation
+                    });
                 }
             } catch (error) {
-                console.error(error);
-                setWeather({ ...weather, desc: 'Erro ao carregar clima' });
+                console.warn("Clima Open-Meteo / GPS:", error);
+                setWeather({ temp: '--', desc: 'Clima da Fazenda', humidity: '--', wind: '--', rain: '--' });
             }
         })();
     }, []);
 
     const gridItems = [
-        { id: 1, title: 'PULVERIZAÇÃO', icon: 'spray-can', lib: FontAwesome5, screen: 'Pulverizacao' },
-        { id: 2, title: 'PLANTIO', icon: 'seedling', lib: FontAwesome5, screen: 'Plantios' },
-        { id: 3, title: 'COLHEITA', icon: 'tractor', lib: FontAwesome5, screen: 'Colheitas' },
-        { id: 4, title: 'REVISÕES', icon: 'wrench', lib: FontAwesome5, screen: 'Revisoes' },
-        { id: 5, title: 'DIESEL', icon: 'gas-pump', lib: FontAwesome5, screen: 'Diesel' },
-        { id: 6, title: 'ESTOQUE', icon: 'warehouse', lib: FontAwesome5, screen: 'Manager', params: { initialView: 'estoque' } },
-        { id: 7, title: 'PLUVIÔMETRO', icon: 'cloud-rain', lib: FontAwesome5, screen: 'Pluviometro' },
-        { id: 8, title: '% ANDAMENTO', icon: 'percentage', lib: FontAwesome5, screen: 'Andamento' },
-        { id: 9, title: 'GERENCIADOR', icon: 'cogs', lib: FontAwesome5, screen: 'Manager' },
-        { id: 10, title: 'MANUAIS', icon: 'book-open', lib: FontAwesome5, screen: 'Manuais' },
+        { id: 1, title: 'Pulverização', subtitle: 'Aplicações & Calda', icon: SprayCan, screen: 'Pulverizacao', color: 'from-emerald-500 to-green-600' },
+        { id: 2, title: 'Plantio', subtitle: 'Variedades & Área', icon: Sprout, screen: 'Plantios', color: 'from-green-600 to-emerald-700' },
+        { id: 3, title: 'Colheita', subtitle: 'Produtividade (sc/ha)', icon: Wheat, screen: 'Colheitas', color: 'from-amber-500 to-yellow-600' },
+        { id: 4, title: 'Revisões', subtitle: 'Manutenção de Frota', icon: Wrench, screen: 'Revisoes', color: 'from-blue-500 to-indigo-600' },
+        { id: 5, title: 'Diesel', subtitle: 'Estoque & Consumo', icon: Fuel, screen: 'Diesel', color: 'from-red-500 to-orange-600' },
+        { id: 6, title: 'Estoque', subtitle: 'Insumos & Peças', icon: Warehouse, screen: 'Manager', params: { initialTab: 'estoque' }, color: 'from-teal-500 to-emerald-600' },
+        { id: 7, title: 'Pluviômetro', subtitle: 'Histórico de Chuvas', icon: CloudRain, screen: 'Pluviometro', color: 'from-sky-500 to-blue-600' },
+        { id: 8, title: '% Andamento', subtitle: 'Etapas da Safra', icon: Percent, screen: 'Andamento', color: 'from-violet-500 to-purple-600' },
+        { id: 9, title: 'Gerenciador', subtitle: 'Máquinas & Talhões', icon: Sliders, screen: 'Manager', params: { initialTab: 'talhoes' }, color: 'from-slate-600 to-slate-800' },
+        { id: 10, title: 'Manuais', subtitle: 'Documentos & PDFs', icon: BookOpen, screen: 'Manuais', color: 'from-cyan-600 to-teal-700' },
     ];
 
-    useEffect(() => {
-        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-home-styles')) {
-            const style = document.createElement('style');
-            style.id = 'w3-agro-home-styles';
-            style.innerHTML = `
-                * { box-sizing: border-box; }
-                body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background-color: ${THEME.background}; }
-                button { cursor: pointer; }
-                .spinner { border: 4px solid ${THEME.primary}40; border-top-color: ${THEME.primary}; border-radius: 50%; animation: spin 1s linear infinite; }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                
-                .home-container { display: flex; flex-direction: column; min-height: 100vh; }
-                .home-web-container { flex: 1; width: 100%; max-width: 1200px; align-self: center; margin: 0 auto; display: flex; flex-direction: column; position: relative; }
-                
-                .top-header { background-color: ${THEME.primary}; padding: 30px 20px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-                .header-top-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-                .greeting-text { color: ${THEME.textWhite}; font-size: 22px; font-weight: bold; }
-                .header-icons { display: flex; flex-direction: row; }
-                .icon-btn-header { margin-left: 15px; background: none; border: none; padding: 0; }
-                
-                .weather-wrapper { display: flex; flex-direction: column; align-items: center; margin-top: 15px; }
-                .weather-temp { font-size: 56px; font-weight: bold; color: ${THEME.textWhite}; }
-                .weather-desc { font-size: 18px; color: ${THEME.textWhite}; margin-bottom: 15px; opacity: 0.9; text-transform: capitalize; }
-                .weather-pill { display: flex; flex-direction: row; background-color: rgba(255,255,255,0.25); border-radius: 30px; padding: 8px 15px; align-items: center; justify-content: center; }
-                .pill-item { display: flex; flex-direction: row; align-items: center; margin: 0 12px; }
-                .pill-text { color: ${THEME.textWhite}; font-size: 16px; font-weight: 600; margin-left: 6px; }
-
-                .dashboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 30px 10px 100px 10px; width: 100%; }
-                .grid-button { background-color: ${THEME.primaryDark}; border-radius: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 4px 5px rgba(0,0,0,0.2); border: none; aspect-ratio: 1; padding: 10px; transition: transform 0.2s; }
-                .grid-button:hover { transform: translateY(-2px); }
-                .grid-button-text { color: ${THEME.textWhite}; font-size: 13px; font-weight: bold; text-align: center; margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-
-                .chatbot-fab { position: fixed; right: 25px; bottom: 30px; background-color: ${THEME.primary}; width: 60px; height: 60px; border-radius: 30px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 4px rgba(0,0,0,0.3); border: 2px solid #fff; z-index: 100; }
-
-                .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; }
-                .modal-responsive { background-color: ${THEME.secondary}; border-radius: 15px; overflow: hidden; width: 100%; display: flex; flex-direction: column; max-height: 90vh; }
-                .modal-header { display: flex; flex-direction: row; justify-content: space-between; align-items: center; padding: 18px; border-bottom: 1px solid #eee; }
-                .modal-title { font-size: 18px; font-weight: bold; }
-                .icon-btn { background: none; border: none; padding: 5px; cursor: pointer; }
-
-                .chatbot-popup-container { background-color: ${THEME.secondary}; width: 100%; height: 100%; display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
-                .chatbot-header { background-color: ${THEME.secondary}; display: flex; flex-direction: row; justify-content: space-between; padding: 18px; align-items: center; border-bottom: 1px solid #EAEAEA; }
-                .chatbot-title { color: ${THEME.primary}; font-weight: bold; font-size: 18px; }
-
-                .chatbot-welcome-container { flex: 1; display: flex; flex-direction: column; justify-content: center; alignItems: center; padding: 30px; text-align: center; }
-                .chatbot-welcome-title { font-size: 22px; font-weight: bold; color: ${THEME.textBlack}; margin-top: 15px; }
-                .chatbot-welcome-subtitle { font-size: 14px; color: ${THEME.secondaryText}; margin-top: 5px; }
-                .chatbot-prompt-card { display: flex; flex-direction: row; background-color: ${THEME.grayButton}; padding: 18px; border-radius: 15px; align-items: center; justify-content: space-between; margin-bottom: 12px; border: none; width: 100%; text-align: left; transition: background 0.2s; }
-                .chatbot-prompt-card:hover { background-color: #e0e4e0; }
-                .chatbot-prompt-text { font-size: 14px; color: ${THEME.textBlack}; flex: 1; }
-
-                .quick-options-grid { display: flex; flex-wrap: wrap; justify-content: space-between; }
-                .chatbot-quick-option { width: 48%; background-color: ${THEME.grayButton}; padding: 15px; border-radius: 15px; display: flex; flex-direction: column; align-items: center; margin-bottom: 15px; border: none; transition: transform 0.2s; }
-                .chatbot-quick-option:hover { transform: scale(1.02); }
-                .chatbot-quick-option-text { font-size: 12px; color: ${THEME.textBlack}; text-align: center; margin-top: 8px; font-weight: 600; }
-
-                .message-bubble { padding: 15px; border-radius: 15px; margin-bottom: 10px; max-width: 85%; word-break: break-word; }
-                .user-message { background-color: ${THEME.primary}; align-self: flex-end; border-bottom-right-radius: 5px; color: ${THEME.textWhite}; }
-                .bot-message { background-color: ${THEME.grayButton}; align-self: flex-start; border-bottom-left-radius: 5px; color: ${THEME.textBlack}; }
-                .system-message { background-color: transparent; align-self: center; padding: 5px; text-align: center; }
-                .markdown-text { line-height: 1.5; }
-                .markdown-text p { margin: 0 0 10px 0; }
-                .markdown-text p:last-child { margin: 0; }
-
-                .chat-input-container { display: flex; flex-direction: row; padding: 10px 10px 20px 10px; background-color: ${THEME.secondary}; border-top: 1px solid #EAEAEA; align-items: center; }
-                .chat-input { flex: 1; background-color: ${THEME.grayButton}; padding: 12px 15px; border-radius: 20px; max-height: 100px; min-height: 45px; border: none; resize: none; font-family: inherit; font-size: 14px; outline: none; }
-                .chatbot-send-button { background-color: ${THEME.primary}; width: 46px; height: 46px; border-radius: 23px; display: flex; justify-content: center; align-items: center; margin-left: 10px; border: none; flex-shrink: 0; }
-
-                .model-option-card { padding: 15px; background-color: #fff; border-radius: 10px; margin-bottom: 10px; display: flex; flex-direction: row; align-items: center; border: 1px solid #eee; width: 100%; cursor: pointer; }
-                .model-option-card.active { border-color: ${THEME.primary}; background-color: #f0fdf4; }
-                .radio-outer { width: 22px; height: 22px; border-radius: 11px; border: 2px solid #ccc; display: flex; justify-content: center; align-items: center; margin-left: 10px; }
-                .radio-outer.active { border-color: ${THEME.primary}; }
-                .radio-inner { width: 12px; height: 12px; border-radius: 6px; background-color: ${THEME.primary}; }
-                .location-btn { background-color: rgba(0,0,0,0.05); padding: 15px; border-radius: 10px; display: flex; flex-direction: row; align-items: center; border: none; width: 100%; }
-
-                @media (min-width: 768px) {
-                    .top-header { padding: 30px 40px; border-bottom-left-radius: 30px; border-bottom-right-radius: 30px; }
-                    .dashboard-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); padding: 30px 20px 100px 20px; }
-                    .grid-button { padding: 20px; }
-                    .grid-button-text { font-size: 16px; margin-top: 15px; }
-                    .chatbot-popup-container { max-width: 400px; height: 600px; margin: auto; }
-                    .modal-overlay { align-items: flex-end; justify-content: flex-end; padding: 30px; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }, []);
-
     return (
-        <div className="home-container">
-            <div className="home-web-container">
-                <div className="top-header">
-                    <div className="header-top-row">
-                        <span className="greeting-text">Olá, {userName}</span>
-                        <div className="header-icons">
-                            <button className="icon-btn-header">
-                                <Ionicons name="download-outline" size={24} color={THEME.textWhite} />
-                            </button>
-                            <button className="icon-btn-header" onClick={handleLogout}>
-                                <Ionicons name="log-out-outline" size={24} color={THEME.textWhite} />
-                            </button>
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8">
+                
+                {/* Top Header Card */}
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-600 text-white p-6 sm:p-8 shadow-xl shadow-emerald-950/20 mb-8">
+                    {/* Background Pattern Elements */}
+                    <div className="absolute -right-10 -bottom-10 w-60 h-60 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+                    <div className="absolute right-40 -top-10 w-40 h-40 rounded-full bg-emerald-400/20 blur-xl pointer-events-none" />
+
+                    <div className="relative z-10">
+                        {/* Top bar */}
+                        <div className="flex items-center justify-between pb-6 border-b border-white/15">
+                            <div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-200">Painel Principal</div>
+                                <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-0.5">Olá, {userName} 👋</h1>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={handleLogout} 
+                                    className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all cursor-pointer flex items-center gap-2 text-sm font-medium"
+                                    title="Sair da Conta"
+                                >
+                                    <LogOut size={18} />
+                                    <span className="hidden sm:inline">Sair</span>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    <div className="weather-wrapper">
-                        <span className="weather-temp">{weather.temp}°C</span>
-                        <span className="weather-desc">{weather.desc}</span>
-                        <div className="weather-pill">
-                            <div className="pill-item">
-                                <Ionicons name="water" size={14} color={THEME.textWhite} />
-                                <span className="pill-text">{weather.humidity}%</span>
+
+                        {/* Weather Widget */}
+                        <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+                            <div className="flex items-center gap-4">
+                                <span className="text-5xl sm:text-6xl font-black tracking-tight">{weather.temp}°C</span>
+                                <div>
+                                    <div className="text-base font-semibold capitalize text-white/95">{weather.desc}</div>
+                                    <div className="text-xs text-emerald-200 mt-0.5">
+                                        {location ? `📍 ${location.city || ''}, ${location.region || ''}` : 'Clima da Fazenda'}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="pill-item">
-                                <FontAwesome5 name="wind" size={12} color={THEME.textWhite} />
-                                <span className="pill-text">{weather.wind} km/h</span>
-                            </div>
-                            <div className="pill-item">
-                                <FontAwesome5 name="cloud-rain" size={12} color={THEME.textWhite} />
-                                <span className="pill-text">{weather.rain}mm</span>
+
+                            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap justify-center">
+                                {/* Weather Indicators Pill */}
+                                <div className="flex items-center gap-3 sm:gap-4 bg-black/20 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10">
+                                    <div className="flex items-center gap-1.5">
+                                        <Droplets size={16} className="text-sky-300" />
+                                        <span className="text-xs font-bold">{weather.humidity}%</span>
+                                    </div>
+                                    <div className="w-px h-4 bg-white/20" />
+                                    <div className="flex items-center gap-1.5">
+                                        <Wind size={14} className="text-emerald-300" />
+                                        <span className="text-xs font-bold">{weather.wind} km/h</span>
+                                    </div>
+                                    <div className="w-px h-4 bg-white/20" />
+                                    <div className="flex items-center gap-1.5">
+                                        <CloudRain size={14} className="text-blue-300" />
+                                        <span className="text-xs font-bold">{weather.rain} mm</span>
+                                    </div>
+                                </div>
+
+                                {/* Quick Action: Ver Mapa */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFarmMap(true)}
+                                    className="p-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold border border-white/15 shadow-md"
+                                    title="Visualizar Mapa da Fazenda e Talhões"
+                                >
+                                    <Compass size={16} className="text-emerald-300" />
+                                    <span>Ver Mapa</span>
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="dashboard-grid">
-                    {gridItems.map((item) => (
-                        <button key={item.id} className="grid-button" onClick={() => item.screen ? navigation?.navigate?.(item.screen, item.params) : window.alert('Tela em construção.')}>
-                            <item.lib name={item.icon} size={32} color={THEME.textWhite} />
-                            <span className="grid-button-text" title={item.title}>{item.title}</span>
-                        </button>
-                    ))}
+                {/* Dashboard Grid Modules */}
+                <div className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-slate-800">Módulos da Fazenda</h2>
+                        <span className="text-xs font-medium text-slate-500">10 ferramentas disponíveis</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
+                        {gridItems.map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => item.screen ? navigation?.navigate?.(item.screen, item.params) : window.alert('Tela em construção.')}
+                                className="group relative bg-white hover:bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 flex flex-col items-center text-center cursor-pointer overflow-hidden"
+                            >
+                                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.color} text-white flex items-center justify-center mb-3 shadow-md group-hover:scale-110 transition-transform`}>
+                                    <item.icon size={22} />
+                                </div>
+                                <span className="font-bold text-xs sm:text-sm text-slate-800 group-hover:text-emerald-700 transition-colors truncate w-full">
+                                    {item.title}
+                                </span>
+                                <span className="text-[11px] text-slate-500 mt-0.5 truncate w-full">
+                                    {item.subtitle}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
+                {/* Floating Action Button (FAB) — AgronomIA */}
                 {!isChatbotOpen && (
-                    <button className="chatbot-fab" onClick={() => setIsChatbotOpen(true)}>
-                        <MaterialCommunityIcons name="robot-outline" size={28} color={THEME.textWhite} />
-                    </button>
-                )}
+                    <div className="fixed right-6 bottom-6 z-40 flex flex-col items-end gap-3">
+                        {/* Label tooltip */}
+                        <div
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-white pointer-events-none"
+                            style={{
+                                background: 'rgba(15,23,42,0.9)',
+                                border: '1px solid rgba(16,185,129,0.25)',
+                                backdropFilter: 'blur(12px)',
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                            }}
+                        >
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="tracking-wide">AgronomIA Online</span>
+                        </div>
 
-                {isChatbotOpen && (
-                    <div className="modal-overlay">
-                        <AgronomiaChatbot onClose={() => setIsChatbotOpen(false)} />
+                        {/* FAB Button */}
+                        <button
+                            onClick={() => setIsChatbotOpen(true)}
+                            className="w-16 h-16 rounded-2xl text-white flex items-center justify-center cursor-pointer group transition-all hover:scale-110 active:scale-95"
+                            title="Abrir AgronomIA"
+                            style={{
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                boxShadow: '0 8px 32px rgba(16,185,129,0.5), 0 0 0 1px rgba(16,185,129,0.2)',
+                            }}
+                        >
+                            <Bot size={32} className="group-hover:rotate-12 transition-transform duration-300" />
+                            {/* Ping indicator */}
+                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center">
+                                <span className="w-2 h-2 rounded-full bg-amber-200 animate-ping" />
+                            </span>
+                        </button>
                     </div>
                 )}
+
+                {/* Chatbot Modal — slide-up on mobile, centered on desktop */}
+                {isChatbotOpen && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-end sm:items-end sm:justify-end p-0 sm:p-6 animate-fadeIn"
+                        style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+                        onClick={(e) => { if (e.target === e.currentTarget) setIsChatbotOpen(false); }}
+                    >
+                        {/* Slide-up on mobile: full-width, partial height; floating on desktop */}
+                        <div className="w-full sm:w-auto">
+                            <AgronomiaChatbot onClose={() => setIsChatbotOpen(false)} />
+                        </div>
+                    </div>
+                )}
+
+                {/* Farm Map Modal */}
+                {showFarmMap && (
+                    <FarmMapModal
+                        talhoes={talhoesList}
+                        onClose={() => setShowFarmMap(false)}
+                    />
+                )}
+
             </div>
         </div>
     );

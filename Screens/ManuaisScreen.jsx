@@ -1,553 +1,583 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+    ArrowLeft,
+    PlusCircle,
+    Tag,
+    Search,
+    BookOpen,
+    FileText,
+    Pencil,
+    Trash2,
+    Eye,
+    X
+} from 'lucide-react-native';
+import {
+    collection,
+    doc,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    onSnapshot,
+    query,
+    orderBy
+} from 'firebase/firestore';
+import { auth, db, INITIAL_MANUAL_CATEGORIES, seedInitialFirestoreData } from '../firebaseConfig';
 
-// Configuração do Firebase
-import { auth, db } from '../firebaseConfig';
-
-const THEME = {
-    primary: '#4CAF50',
-    primaryDark: '#388E3C',
-    secondary: '#FFFFFF',
-    background: '#F9FBF9',
-    textBlack: '#2C3329',
-    textWhite: '#FFFFFF',
-    secondaryText: '#4A4A4A',
-    grayInput: '#F0F4F1',
-    lightGray: '#E0E0E0',
-    error: '#E53935',
+const formatDate = (dateVal) => {
+    if (!dateVal) return '--/--/----';
+    const date = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+    if (isNaN(date.getTime())) return '--/--/----';
+    return date.toLocaleDateString('pt-BR');
 };
 
-const MANUAL_CONFIG = {
-    maxTitleLength: 100,
-    maxDescriptionLength: 500,
-    maxFileSize: 950 * 1024, // 950 KB 
-    supportedFileTypes: ['application/pdf'],
-    pdfLoadTimeout: 20000,
-};
+const DEFAULT_MARCAS = INITIAL_MANUAL_CATEGORIES.map(c => c.nome);
 
-const ASYNC_STORAGE_PDF_KEY_PREFIX = '@manual_pdf_cache:';
+export default function ManuaisScreen({ navigation }) {
+    const [manuais, setManuais] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('todos'); // 'todos' | 'Tratores' | 'Colheitadeiras' | 'Pulverizadores' | 'Implementos' | 'Agronomia'
+    const [selectedMarca, setSelectedMarca] = useState('todas');
+    const [marcasList, setMarcasList] = useState(DEFAULT_MARCAS);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [modal, setModal] = useState({ visible: false, itemId: null });
 
-const ERROR_MESSAGES = {
-    REQUIRED_TITLE: 'Título é obrigatório',
-    REQUIRED_FILE: 'É necessário selecionar um PDF ou inserir uma URL',
-    INVALID_FILE_TYPE: 'Apenas arquivos PDF são permitidos',
-    FILE_TOO_LARGE: `Arquivo muito grande. Máximo de ${Math.floor(MANUAL_CONFIG.maxFileSize / 1024)} KB.`,
-    INVALID_URL: 'URL inválida',
-    TITLE_TOO_LONG: `Máximo ${MANUAL_CONFIG.maxTitleLength} caracteres`,
-    DESCRIPTION_TOO_LONG: `Máximo ${MANUAL_CONFIG.maxDescriptionLength} caracteres`,
-    LOAD_ERROR: 'Erro ao carregar documento',
-};
+    useEffect(() => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
 
-const validateUrl = (url) => {
-    if (!url || typeof url !== 'string') return false;
-    try {
-        const urlObj = new URL(url.trim());
-        return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-    } catch {
-        return false;
-    }
-};
+        // Escuta a coleção de manuais
+        const qManuais = query(collection(db, 'users', uid, 'manuais'), orderBy('titulo', 'asc'));
+        const unsubManuais = onSnapshot(qManuais, (snapshot) => {
+            setManuais(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            setLoading(false);
+        });
 
-const validateFile = (file) => {
-    if (!file) return { isValid: false, error: ERROR_MESSAGES.REQUIRED_FILE };
-    const fileType = file.type;
-    if (!MANUAL_CONFIG.supportedFileTypes.includes(fileType)) return { isValid: false, error: ERROR_MESSAGES.INVALID_FILE_TYPE };
-    if (file.size && file.size > MANUAL_CONFIG.maxFileSize) return { isValid: false, error: ERROR_MESSAGES.FILE_TOO_LARGE };
-    return { isValid: true, error: null };
-};
+        // Escuta as marcas/categorias do Firestore (manualCategorias)
+        const qCategorias = query(collection(db, 'users', uid, 'manualCategorias'), orderBy('nome', 'asc'));
+        const unsubCategorias = onSnapshot(qCategorias, (snapshot) => {
+            if (!snapshot.empty) {
+                const fetchedMarcas = snapshot.docs.map(d => d.data().nome).filter(Boolean);
+                const merged = Array.from(new Set([...DEFAULT_MARCAS, ...fetchedMarcas]));
+                setMarcasList(merged);
+            } else {
+                // Se ainda não houver categorias no banco, inicializa com seed
+                seedInitialFirestoreData(uid);
+                setMarcasList(DEFAULT_MARCAS);
+            }
+        }, (err) => {
+            console.error("Erro ao carregar marcas:", err);
+            setMarcasList(DEFAULT_MARCAS);
+        });
 
-const convertFileToBase64 = async (file) => {
-    return new Promise((resolve, reject) => {
-        if (!file) return reject(new Error('File object not found'));
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-    });
-};
+        return () => {
+            unsubManuais();
+            unsubCategorias();
+        };
+    }, []);
 
-const CustomHeader = ({ title, onBack }) => (
-    <div style={styles.header}>
-        <div style={styles.headerContent}>
-            {onBack ? (
-                <button onClick={onBack} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={26} color={THEME.textWhite} />
-                </button>
-            ) : <div style={{ width: 36 }} />}
-            <span style={styles.headerTitle}>{title}</span>
-            <div style={{ width: 36 }} />
+    const filtered = useMemo(() => {
+        return manuais.filter(m => {
+            const matchTab = activeTab === 'todos' ? true : m.categoria === activeTab;
+            const matchMarca = selectedMarca === 'todas' ? true : (m.marca || '').toLowerCase() === selectedMarca.toLowerCase();
+            const q = searchQuery.toLowerCase();
+            const matchSearch = 
+                !searchQuery ||
+                m.titulo?.toLowerCase().includes(q) ||
+                m.marca?.toLowerCase().includes(q) ||
+                m.modelo?.toLowerCase().includes(q) ||
+                m.descricao?.toLowerCase().includes(q);
+
+            return matchTab && matchMarca && matchSearch;
+        });
+    }, [manuais, activeTab, selectedMarca, searchQuery]);
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("Deseja realmente excluir este manual?")) return;
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        try {
+            await deleteDoc(doc(db, 'users', uid, 'manuais', id));
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao excluir manual.");
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+            <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col px-4 py-6 sm:px-6 sm:py-8">
+                
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigation?.goBack()}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+                            title="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Biblioteca de Manuais</h1>
+                            <p className="text-xs text-slate-500">Catálogos de peças, manuais de operação e guias técnicos</p>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Novo Manual</span>
+                    </button>
+                </div>
+
+                {/* Filter Bar: Categories, Brands & Search */}
+                <div className="space-y-3 mb-6">
+                    {/* Category Tabs */}
+                    <div className="flex rounded-xl bg-slate-200/80 p-1 w-full overflow-x-auto">
+                        {['todos', 'Tratores', 'Colheitadeiras', 'Pulverizadores', 'Implementos', 'Agronomia'].map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                                    activeTab === tab ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                {tab === 'todos' ? `Todas Categorias (${manuais.length})` : tab}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Brand Selector & Search */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                <Tag size={14} />
+                                <span>Marca:</span>
+                            </span>
+                            <select
+                                value={selectedMarca}
+                                onChange={(e) => setSelectedMarca(e.target.value)}
+                                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-emerald-500 shadow-sm min-w-[150px]"
+                            >
+                                <option value="todas">Todas as marcas</option>
+                                {marcasList.map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="relative w-full sm:w-72">
+                            <input
+                                type="text"
+                                placeholder="Buscar manual, modelo, conteúdo..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                            />
+                            <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* List of Manuals */}
+                <div className="flex-1">
+                    {loading ? (
+                        <div className="py-20 flex flex-col items-center justify-center">
+                            <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+                            <span className="text-xs font-semibold text-slate-500">Carregando manuais...</span>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                                <BookOpen size={24} />
+                            </div>
+                            <h3 className="text-base font-bold text-slate-700">Nenhum manual encontrado</h3>
+                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                                {searchQuery || activeTab !== 'todos' || selectedMarca !== 'todas'
+                                    ? 'Nenhum manual corresponde aos filtros aplicados.'
+                                    : 'Adicione manuais em PDF ou links técnicos para consulta rápida da sua equipe no campo.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filtered.map((item) => (
+                                <div
+                                    key={item.id}
+                                    className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                                >
+                                    <div>
+                                        <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-11 h-11 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-lg font-bold">
+                                                    <FileText size={20} />
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                                        {item.categoria || 'Geral'}
+                                                    </span>
+                                                    <h3 className="text-base font-bold text-slate-800 mt-0.5 group-hover:text-emerald-700 transition-colors">
+                                                        {item.titulo}
+                                                    </h3>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3">
+                                            {item.marca && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-slate-400">Marca:</span>
+                                                    <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                                                        {item.marca}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {item.modelo && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-slate-400">Modelo:</span>
+                                                    <span className="font-semibold text-slate-700">{item.modelo}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {item.descricao && (
+                                            <p className="text-xs text-slate-500 italic line-clamp-2 mb-2">
+                                                "{item.descricao}"
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+
+                                        {item.url ? (
+                                            <a
+                                                href={item.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                                            >
+                                                <Eye size={15} />
+                                                <span>Abrir PDF</span>
+                                            </a>
+                                        ) : (
+                                            <span className="text-[11px] text-slate-400 font-medium">Sem link anexado</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Modal Manual */}
+                {modal.visible && (
+                    <ModalAddOrEditManual
+                        itemId={modal.itemId}
+                        marcasList={marcasList}
+                        onClose={() => setModal({ visible: false, itemId: null })}
+                    />
+                )}
+
+            </div>
         </div>
-    </div>
-);
+    );
+}
 
-const FormInput = ({ label, placeholder, value, onChangeText, error, multiline, type = 'text' }) => (
-    <div style={styles.inputContainer}>
-        <span style={styles.formLabel}>{label}</span>
-        {multiline ? (
-            <textarea
-                style={{ ...styles.input, ...( error ? { borderColor: THEME.error, borderWidth: 1 } : {} ), height: 80, resize: 'vertical' }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-            />
-        ) : (
-            <input
-                type={type}
-                style={{ ...styles.input, ...( error ? { borderColor: THEME.error, borderWidth: 1 } : {} ) }}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChangeText(e.target.value)}
-            />
-        )}
-        {error && <span style={styles.errorText}>{error}</span>}
-    </div>
-);
-
-const FabAdd = ({ onAdd }) => (
-    <div style={styles.fabContainer}>
-        <button style={styles.fabAdd} onClick={onAdd}>
-            <Ionicons name="add" size={28} color={THEME.textWhite} />
-        </button>
-    </div>
-);
-
-const Spinner = () => <div className="spinner" style={{width:40,height:40,borderRadius:"50%",border:`4px solid ${THEME.primary}40`,borderTopColor:THEME.primary,animation:"spin 1s linear infinite",margin:"auto"}} />;
-
-const AddOrEditManualItemModal = ({ visible, itemId, categoryId, onClose }) => {
+function ModalAddOrEditManual({ itemId, marcasList = DEFAULT_MARCAS, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
-    const [file, setFile] = useState(null);
-    const [errors, setErrors] = useState({});
-    const [data, setData] = useState({ titulo: '', descricao: '', arquivoURL: '', arquivoNome: '', arquivoBase64: null });
-    const fileInputRef = useRef(null);
+    const [titulo, setTitulo] = useState('');
+    const [categoria, setCategoria] = useState('Tratores');
+    const [marca, setMarca] = useState(marcasList[0] || 'John Deere');
+    const [customMarca, setCustomMarca] = useState('');
+    const [modelo, setModelo] = useState('');
+    const [url, setUrl] = useState('');
+    const [descricao, setDescricao] = useState('');
 
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            setLoading(true);
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
             try {
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId));
-                if (docSnap.exists()) setData(docSnap.data());
-                else { 
-                    window.alert('Manual não encontrado.');
-                    onClose(); 
+                const snap = await getDoc(doc(db, 'users', uid, 'manuais', itemId));
+                if (snap.exists()) {
+                    const d = snap.data();
+                    setTitulo(d.titulo || '');
+                    setCategoria(d.categoria || 'Tratores');
+                    
+                    const itemMarca = d.marca || '';
+                    const matchBrand = marcasList.find(m => m.toLowerCase() === itemMarca.toLowerCase());
+                    if (matchBrand) {
+                        setMarca(matchBrand);
+                        setCustomMarca('');
+                    } else if (itemMarca) {
+                        setMarca('Outra');
+                        setCustomMarca(itemMarca);
+                    } else {
+                        setMarca(marcasList[0] || '');
+                        setCustomMarca('');
+                    }
+
+                    setModelo(d.modelo || '');
+                    setUrl(d.url || '');
+                    setDescricao(d.descricao || '');
                 }
-            } catch (error) { console.error(error); }
-            setLoading(false);
-        })();
-    }, [itemId]);
-
-    const setField = (field, value) => {
-        setData(prev => ({ ...prev, [field]: value }));
-        if (errors[field]) setErrors(prev => ({ ...prev, [field]: null }));
-    };
-
-    const handleFileChange = (e) => {
-        const selectedFile = e.target.files?.[0];
-        if (selectedFile) {
-            const validation = validateFile(selectedFile);
-            if (!validation.isValid) {
-                window.alert(validation.error);
-                return;
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
             }
-            setFile(selectedFile);
-            setData(prev => ({ ...prev, arquivoNome: selectedFile.name, arquivoURL: '', arquivoBase64: null }));
-            setErrors(prev => ({ ...prev, arquivo: null }));
+        })();
+    }, [itemId, marcasList]);
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!titulo.trim()) {
+            window.alert("Informe o título do manual.");
+            return;
         }
-    };
 
-    const handleSave = async () => {
-        const newErrors = {};
-        if (!data.titulo.trim()) newErrors.titulo = ERROR_MESSAGES.REQUIRED_TITLE;
-        if (!file && !data.arquivoBase64 && !data.arquivoURL?.trim()) newErrors.arquivo = ERROR_MESSAGES.REQUIRED_FILE;
-        if (data.arquivoURL?.trim() && !validateUrl(data.arquivoURL)) newErrors.arquivoURL = ERROR_MESSAGES.INVALID_URL;
-
-        setErrors(newErrors);
-        if (Object.keys(newErrors).length > 0) {
-            window.alert('Preencha os campos corretamente.');
+        const finalMarca = marca === 'Outra' ? customMarca.trim() : marca.trim();
+        if (!finalMarca) {
+            window.alert("Selecione ou informe a marca do equipamento.");
             return;
         }
 
         setSaving(true);
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
         try {
-            const uid = auth.currentUser.uid;
-            let fileBase64 = data.arquivoBase64;
-
-            if (file) {
-                fileBase64 = await convertFileToBase64(file);
-            }
-
-            const id = itemId || doc(collection(db, 'users', uid, 'manualItems')).id;
-            const dataToSave = {
-                id,
-                titulo: data.titulo.trim(),
-                descricao: data.descricao.trim(),
-                categoryId: categoryId,
-                arquivoURL: data.arquivoURL.trim(),
-                arquivoNome: file ? file.name : data.arquivoNome,
-                arquivoBase64: fileBase64,
-            };
-
-            await setDoc(doc(db, 'users', uid, 'manualItems', id), dataToSave, { merge: true });
-
-            if (itemId) {
-                window.localStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${id}`);
-            }
+            const docId = itemId || doc(collection(db, 'users', uid, 'manuais')).id;
+            await setDoc(doc(db, 'users', uid, 'manuais', docId), {
+                id: docId,
+                titulo: titulo.trim(),
+                categoria,
+                marca: finalMarca,
+                modelo: modelo.trim(),
+                url: url.trim(),
+                descricao: descricao.trim(),
+                dataAtualizacao: new Date()
+            }, { merge: true });
 
             onClose();
-        } catch (e) {
-            window.alert("Não foi possível salvar o manual. " + e.message);
+        } catch (err) {
+            console.error(err);
+            window.alert("Erro ao salvar manual.");
         } finally {
             setSaving(false);
         }
     };
 
-    const handleDelete = () => {
-        if (window.confirm('Deseja excluir este manual?')) {
-            deleteDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId))
-                .then(() => {
-                    window.localStorage.removeItem(`${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`);
-                    onClose();
-                });
-        }
-    };
-
-    if (!visible) return null;
-
-    if (loading) return <div style={styles.modalOverlay}><Spinner /></div>;
-
     return (
-        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal-responsive">
-                <div style={styles.modalHeader}>
-                    <span style={styles.modalTitle}>{itemId ? 'Editar Manual' : 'Inserir Manual'}</span>
-                    <button style={styles.closeButton} onClick={onClose}><Ionicons name="close" size={20} color={THEME.textBlack} /></button>
-                </div>
-                <div style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 80px)' }}>
-                    <FormInput label="Nome / Equipamento *" value={data.titulo} onChangeText={v => setField('titulo', v)} placeholder="Ex: Manual S770" error={errors.titulo} />
-                    <FormInput label="Descrição" value={data.descricao} onChangeText={v => setField('descricao', v)} placeholder="Versão, observações..." multiline error={errors.descricao} />
-
-                    <span style={styles.formLabel}>Arquivo PDF *</span>
-                    <input type="file" accept="application/pdf" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
-                    <button style={styles.btnSecondary} onClick={() => fileInputRef.current?.click()} disabled={saving}>
-                        <Ionicons name="document-attach-outline" size={20} color={THEME.primary} style={{ marginRight: 10 }} />
-                        <span style={styles.btnSecondaryText}>{data.arquivoNome || file ? 'Alterar PDF' : 'Selecionar PDF Local'}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal">
+                <div className="px-6 py-4 bg-emerald-700 text-white flex items-center justify-between">
+                    <span className="font-bold text-base">{itemId ? 'Editar Manual' : 'Novo Manual Técnico'}</span>
+                    <button onClick={onClose} className="p-1 rounded-lg text-emerald-200 hover:text-white transition-colors cursor-pointer">
+                        <X size={22} />
                     </button>
-
-                    {(data.arquivoNome || file) && <span style={styles.fileNameText}>Ficheiro: {data.arquivoNome || file?.name}</span>}
-
-                    <div style={styles.orText}>OU</div>
-
-                    <FormInput label="URL do PDF (Externo)" value={data.arquivoURL} onChangeText={v => setField('arquivoURL', v)} placeholder="Cole um link externo" type="url" error={errors.arquivoURL} />
-                    {errors.arquivo && <div style={{ ...styles.errorText, textAlign: 'center' }}>{errors.arquivo}</div>}
-
-                    <button style={styles.saveButton} onClick={handleSave} disabled={saving}>
-                        {saving ? <Spinner /> : <span style={styles.saveButtonText}>Salvar Manual</span>}
-                    </button>
-                    {itemId && <button style={styles.deleteButton} onClick={handleDelete}><span style={styles.deleteButtonText}>Excluir Manual</span></button>}
                 </div>
-            </div>
-        </div>
-    );
-};
 
-const ManuaisListaScreen = ({ onSelectCategory, onBack }) => {
-    const [categorias, setCategorias] = useState([]);
-    const [loading, setLoading] = useState(true);
+                {loading ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Título do Manual / Documento *
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                placeholder="Ex: Manual de Operação e Manutenção Tratores 6J"
+                                value={titulo}
+                                onChange={(e) => setTitulo(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                            />
+                        </div>
 
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const q = collection(db, 'users', auth.currentUser.uid, 'manualCategorias');
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nome.localeCompare(b.nome));
-            setCategorias(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Categoria *
+                                </label>
+                                <select
+                                    value={categoria}
+                                    onChange={(e) => setCategoria(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
+                                >
+                                    <option value="Tratores">Tratores</option>
+                                    <option value="Colheitadeiras">Colheitadeiras</option>
+                                    <option value="Pulverizadores">Pulverizadores</option>
+                                    <option value="Implementos">Implementos / Plantadeiras</option>
+                                    <option value="Agronomia">Guia Agronômico / Pragas</option>
+                                    <option value="Outro">Outro</option>
+                                </select>
+                            </div>
 
-    return (
-        <div style={styles.container}>
-            <div className="web-container-responsive">
-                <CustomHeader title="Marcas e Categorias" onBack={onBack} />
-                <div style={styles.listContainer}>
-                    {loading ? <Spinner />
-                        : categorias.length === 0 ? <span style={styles.emptyText}>Nenhuma categoria encontrada.</span>
-                            : (
-                                <div className="responsive-grid">
-                                    {categorias.map(item => (
-                                        <button key={item.id} style={styles.listItem} className="list-item-responsive" onClick={() => onSelectCategory(item.id, item.nome)}>
-                                            {item.imagem ? (
-                                                <img src={item.imagem} style={styles.listImage} alt={item.nome} />
-                                            ) : (
-                                                <div style={styles.listImagePlaceholder}>
-                                                    <MaterialCommunityIcons name="tractor" size={28} color={THEME.secondaryText} />
-                                                </div>
-                                            )}
-                                            <div style={styles.listContent}>
-                                                <span style={styles.listTitle}>{item.nome}</span>
-                                            </div>
-                                            <Ionicons name="chevron-forward" size={24} color={THEME.secondaryText} />
-                                        </button>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Marca / Fabricante *
+                                </label>
+                                <select
+                                    value={marca}
+                                    onChange={(e) => {
+                                        setMarca(e.target.value);
+                                        if (e.target.value !== 'Outra') {
+                                            setCustomMarca('');
+                                        }
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
+                                >
+                                    {marcasList.map((m) => (
+                                        <option key={m} value={m}>{m}</option>
                                     ))}
-                                </div>
-                            )}
-                </div>
-            </div>
-        </div>
-    );
-};
+                                    <option value="Outra">Outra marca...</option>
+                                </select>
+                            </div>
+                        </div>
 
-const ManualItemsListaScreen = ({ categoryId, categoryName, onBack, onViewPdf }) => {
-    const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [editItemId, setEditItemId] = useState(null);
+                        {/* Quick-select Brand Pills */}
+                        <div>
+                            <span className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+                                Seleção rápida de marcas:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                                {marcasList.map((m) => {
+                                    const isSelected = marca === m;
+                                    return (
+                                        <button
+                                            key={m}
+                                            type="button"
+                                            onClick={() => {
+                                                setMarca(m);
+                                                setCustomMarca('');
+                                            }}
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                                isSelected
+                                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                            }`}
+                                        >
+                                            {m}
+                                        </button>
+                                    );
+                                })}
+                                <button
+                                    type="button"
+                                    onClick={() => setMarca('Outra')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                        marca === 'Outra'
+                                            ? 'bg-emerald-600 text-white shadow-sm'
+                                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                    }`}
+                                >
+                                    + Outra
+                                </button>
+                            </div>
+                        </div>
 
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const q = query(collection(db, 'users', auth.currentUser.uid, 'manualItems'), where('categoryId', '==', categoryId));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.titulo.localeCompare(b.titulo));
-            setItems(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [categoryId]);
+                        {/* Custom Brand Input (when 'Outra' is selected) */}
+                        {marca === 'Outra' && (
+                            <div className="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-200/80 animate-fadeIn">
+                                <label className="block text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">
+                                    Nome da Marca Personalizada *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Ex: Fendt, Kuhn, Marchesan..."
+                                    value={customMarca}
+                                    onChange={(e) => setCustomMarca(e.target.value)}
+                                    className="w-full bg-white border border-emerald-300 rounded-xl px-4 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                            </div>
+                        )}
 
-    const handlePress = (item) => {
-        if (item.arquivoBase64 || item.arquivoURL) {
-            onViewPdf(item.id, item.titulo);
-        }
-        else {
-            window.alert("Este item não possui um PDF associado.");
-        }
-    };
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Modelo do Equipamento
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: 6110J, Imperador 4000..."
+                                    value={modelo}
+                                    onChange={(e) => setModelo(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                    Link / URL do PDF
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://..."
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500"
+                                />
+                            </div>
+                        </div>
 
-    const handleEdit = (id) => {
-        setEditItemId(id);
-        setModalVisible(true);
-    };
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                                Descrição / Conteúdo
+                            </label>
+                            <textarea
+                                rows={3}
+                                placeholder="Tabelas de calibração, torque dos parafusos, intervalos de troca de óleo..."
+                                value={descricao}
+                                onChange={(e) => setDescricao(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 resize-none"
+                            />
+                        </div>
 
-    return (
-        <div style={styles.container}>
-            <div className="web-container-responsive">
-                <CustomHeader title={categoryName} onBack={onBack} />
-                <div style={styles.listContainer}>
-                    {loading ? <Spinner />
-                        : items.length === 0 ? <span style={styles.emptyText}>Nenhum manual cadastrado nesta marca.</span>
-                            : (
-                                <div className="responsive-grid">
-                                    {items.map(item => {
-                                        const hasFile = !!(item.arquivoBase64 || item.arquivoURL);
-                                        return (
-                                            <div key={item.id} style={{ ...styles.listItem, ...( !hasFile ? { opacity: 0.6 } : {} ) }} className="list-item-responsive">
-                                                <button style={{ flex: 1, display: 'flex', alignItems: 'center', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} onClick={() => handlePress(item)}>
-                                                    <div style={styles.listIconBox}>
-                                                        <Ionicons name={hasFile ? "document-text" : "document-outline"} size={24} color={hasFile ? THEME.primary : THEME.secondaryText} />
-                                                    </div>
-                                                    <div style={styles.listContent}>
-                                                        <span style={styles.listTitle}>{item.titulo}</span>
-                                                        <span style={styles.listSubtitle}>{item.descricao || (hasFile ? 'Visualizar PDF' : 'Sem ficheiro')}</span>
-                                                    </div>
-                                                </button>
-                                                <button onClick={() => handleEdit(item.id)} style={{ padding: 10, border: 'none', background: 'none', cursor: 'pointer' }}>
-                                                    <Ionicons name="pencil" size={22} color={THEME.secondaryText} />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                </div>
-
-                <FabAdd onAdd={() => handleEdit(null)} />
-
-                {modalVisible && (
-                    <AddOrEditManualItemModal
-                        visible={true} itemId={editItemId} categoryId={categoryId}
-                        onClose={() => setModalVisible(false)}
-                    />
+                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {saving ? 'Salvando...' : 'Salvar Manual'}
+                            </button>
+                        </div>
+                    </form>
                 )}
             </div>
         </div>
     );
-};
-
-const VisualizarPDFScreen = ({ itemId, title, onBack }) => {
-    const [pdfSource, setPdfSource] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    useEffect(() => {
-        const loadPdf = async () => {
-            const cacheKey = `${ASYNC_STORAGE_PDF_KEY_PREFIX}${itemId}`;
-            try {
-                let cachedData = window.localStorage.getItem(cacheKey);
-
-                if (cachedData) {
-                    const item = JSON.parse(cachedData);
-                    setPdfSource(item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}`);
-                    setLoading(false);
-                    return;
-                }
-
-                const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid, 'manualItems', itemId));
-                if (!docSnap.exists()) throw new Error('Item não encontrado');
-
-                const item = docSnap.data();
-                const sourceUri = item.arquivoURL || `data:application/pdf;base64,${item.arquivoBase64}`;
-
-                if (sourceUri) {
-                    setPdfSource(sourceUri);
-                    const cacheValue = JSON.stringify({ arquivoBase64: item.arquivoBase64, arquivoURL: item.arquivoURL });
-                    window.localStorage.setItem(cacheKey, cacheValue);
-                } else throw new Error('PDF Inválido');
-
-            } catch (err) {
-                setError(err.message || ERROR_MESSAGES.LOAD_ERROR);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadPdf();
-    }, [itemId]);
-
-    return (
-        <div style={styles.container}>
-            <div className="web-container-responsive" style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-                <CustomHeader title={title} onBack={onBack} />
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    {loading ? (
-                        <div style={styles.center}><Spinner /></div>
-                    ) : error ? (
-                        <div style={styles.center}>
-                            <Ionicons name="alert-circle" size={48} color={THEME.error} />
-                            <span style={styles.emptyText}>{error}</span>
-                        </div>
-                    ) : (
-                        <iframe
-                            src={pdfSource}
-                            style={{ flex: 1, width: '100%', height: '100%', border: 'none' }}
-                            title="Visualizador de PDF"
-                        />
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default function Manuais({ navigation }) {
-    const [route, setRoute] = useState({ name: 'categorias', params: {} }); // 'categorias', 'items', 'pdf'
-
-    useEffect(() => {
-        if (typeof document !== 'undefined' && !document.getElementById('w3-agro-styles')) {
-            const style = document.createElement('style');
-            style.id = 'w3-agro-styles';
-            style.innerHTML = `
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                * { box-sizing: border-box; }
-                button { border: none; outline: none; cursor: pointer; background: transparent; padding: 0; }
-                input, textarea, select { border: none; outline: none; font-family: inherit; }
-                textarea { resize: vertical; }
-                .responsive-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 15px;
-                    width: 100%;
-                }
-                .modal-responsive {
-                    background-color: ${THEME.secondary};
-                    border-top-left-radius: 20px;
-                    border-top-right-radius: 20px;
-                    padding: 20px;
-                    max-height: 90vh;
-                    width: 100%;
-                    max-width: 800px;
-                    display: flex;
-                    flex-direction: column;
-                    box-sizing: border-box;
-                }
-                .web-container-responsive {
-                    display: flex;
-                    flex-direction: column;
-                    flex: 1;
-                    width: 100%;
-                    max-width: 800px;
-                    align-self: center;
-                    margin: 0 auto;
-                    position: relative;
-                }
-                @media (min-width: 768px) {
-                    .responsive-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-                    .list-item-responsive { max-width: 100% !important; margin: 0 !important; }
-                    .web-container-responsive { max-width: 1200px !important; }
-                    .modal-responsive { border-radius: 20px; align-self: center; margin-bottom: 5vh; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    }, []);
-
-    if (route.name === 'pdf') {
-        return <VisualizarPDFScreen itemId={route.params.itemId} title={route.params.title} onBack={() => { setRoute({ name: 'items', params: { categoryId: route.params.categoryId, categoryName: route.params.categoryName } }); }} />;
-    }
-
-    if (route.name === 'items') {
-        return <ManualItemsListaScreen categoryId={route.params.categoryId} categoryName={route.params.categoryName} onBack={() => { setRoute({ name: 'categorias', params: {} }); }} onViewPdf={(id, title) => { setRoute({ name: 'pdf', params: { itemId: id, title, categoryId: route.params.categoryId, categoryName: route.params.categoryName } }); }} />;
-    }
-
-    return <ManuaisListaScreen onBack={() => { if (navigation?.goBack) navigation.goBack(); else window.history.back(); }} onSelectCategory={(id, name) => { setRoute({ name: 'items', params: { categoryId: id, categoryName: name } }); }} />;
 }
-
-const styles = {
-    container: { display: 'flex', flexDirection: 'column', flex: 1, backgroundColor: THEME.background, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif' },
-    center: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
-
-    // Header
-    header: { backgroundColor: THEME.primary, width: '100%', display: 'flex', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 10 },
-    headerContent: { width: '100%', maxWidth: 1200, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px', height: 60, boxSizing: 'border-box' },
-    backButton: { padding: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'none', cursor: 'pointer' },
-    headerTitle: { color: THEME.textWhite, fontSize: 20, fontWeight: 'bold' },
-
-    // Lists
-    listContainer: { padding: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1 },
-    emptyText: { color: THEME.secondaryText, fontSize: 16, marginTop: 20, textAlign: 'center' },
-    listItem: { display: 'flex', flexDirection: 'row', backgroundColor: THEME.secondary, padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', cursor: 'pointer', border: 'none', textAlign: 'left', boxSizing: 'border-box', width: '100%' },
-    listIconBox: { width: 50, height: 50, backgroundColor: THEME.grayInput, borderRadius: 25, display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: 15, flexShrink: 0 },
-    listImage: { width: 50, height: 50, borderRadius: 25, marginRight: 15, objectFit: 'contain' },
-    listImagePlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: THEME.lightGray, display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: 15, flexShrink: 0 },
-    listContent: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' },
-    listTitle: { fontSize: 18, fontWeight: 'bold', color: THEME.textBlack, marginBottom: 4 },
-    listSubtitle: { fontSize: 14, color: THEME.secondaryText },
-
-    // FAB
-    fabContainer: { position: 'absolute', right: 20, bottom: 30, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center' },
-    fabAdd: { backgroundColor: THEME.primary, width: 55, height: 55, borderRadius: 27.5, display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', border: 'none', cursor: 'pointer' },
-
-    // Modals & Forms
-    modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', zIndex: 1000 },
-    modalHeader: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 22, fontWeight: 'bold', color: THEME.textBlack },
-    closeButton: { backgroundColor: THEME.grayInput, padding: 6, borderRadius: 8, display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', cursor: 'pointer' },
-    
-    inputContainer: { marginBottom: 15, display: 'flex', flexDirection: 'column' },
-    formLabel: { fontSize: 15, color: THEME.secondaryText, marginBottom: 6, fontWeight: '500' },
-    input: { backgroundColor: THEME.grayInput, borderRadius: 8, padding: '0 15px', height: 50, fontSize: 16, color: THEME.textBlack, border: '1px solid transparent', boxSizing: 'border-box', width: '100%', fontFamily: 'inherit' },
-    errorText: { color: THEME.error, fontSize: 12, marginTop: 4 },
-
-    // Custom Buttons
-    btnSecondary: { backgroundColor: THEME.grayInput, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 50, borderRadius: 10, marginTop: 5, border: 'none', cursor: 'pointer', width: '100%' },
-    btnSecondaryText: { color: THEME.primary, fontWeight: 'bold', fontSize: 16 },
-    saveButton: { backgroundColor: THEME.primary, borderRadius: 8, height: 50, display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 15, marginBottom: 10, border: 'none', cursor: 'pointer', width: '100%' },
-    saveButtonText: { color: THEME.textWhite, fontWeight: 'bold', fontSize: 18 },
-    deleteButton: { backgroundColor: 'transparent', borderColor: THEME.error, borderWidth: 1, borderStyle: 'solid', borderRadius: 8, height: 50, display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 10, cursor: 'pointer', width: '100%' },
-    deleteButtonText: { color: THEME.error, fontWeight: 'bold', fontSize: 16 },
-
-    // File Upload UI
-    fileNameText: { textAlign: 'center', marginTop: 10, fontSize: 14, color: THEME.primaryDark, fontWeight: '600' },
-    orText: { textAlign: 'center', margin: '15px 0', color: THEME.secondaryText, fontWeight: 'bold', fontSize: 16 }
-};

@@ -1,0 +1,547 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css');
+
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* ==========================================================================
+   W3LABS AGRO - CENTRALIZED GLOBAL STYLESHEET & DESIGN SYSTEM
+   ========================================================================== */
+
+:root {
+  --font-sans: 'Nokia Pure Headline', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* Primary Lime Green Palette */
+  --agro-lime-50: #f7fee7;
+  --agro-lime-100: #ecfccb;
+  --agro-lime-200: #d9f99d;
+  --agro-lime-300: #bef264;
+  --agro-lime-400: #a3e635;
+  --agro-lime-500: #84cc16;
+  --agro-lime-600: #65a30d;
+  --agro-lime-700: #4d7c0f;
+  --agro-lime-800: #3f6212;
+  --agro-lime-900: #365314;
+  --agro-lime-950: #1a2e05;
+
+  /* Primary Classic Green Palette */
+  --agro-50: #f0fdf4;
+  --agro-100: #dcfce7;
+  --agro-200: #bbf7d0;
+  --agro-300: #86efac;
+  --agro-400: #4ade80;
+  --agro-500: #22c55e;
+  --agro-600: #16a34a;
+  --agro-700: #15803d;
+  --agro-800: #166534;
+  --agro-900: #14532d;
+  --agro-950: #052e16;
+
+  /* Surfaces & Texts (Branco & Preto) */
+  --agro-bg: #ffffff;
+  --agro-surface: #ffffff;
+  --agro-surface-muted: #f8fafc;
+  --agro-border: #e2e8f0;
+  --agro-text-main: #000000;
+  --agro-text-muted: #3f3f46;
+  --agro-text-light: #71717a;
+  
+  /* Accents */
+  --agro-amber: #d97706;
+  --agro-amber-light: #fef3c7;
+  --agro-blue: #0284c7;
+  --agro-blue-light: #e0f2fe;
+  --agro-red: #dc2626;
+  --agro-red-light: #fee2e2;
+
+  /* Shadows & Glow */
+  --agro-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --agro-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --agro-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --agro-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --agro-shadow-lime: 0 10px 25px -5px rgba(132, 204, 22, 0.35);
+  --agro-glow-lime: 0 0 25px rgba(163, 230, 53, 0.4);
+  --agro-shadow-green: 0 10px 20px -5px rgba(22, 163, 74, 0.25);
+}
+
+/* Base Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans) !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  background-color: var(--agro-bg);
+  color: var(--agro-text-main);
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   ANIMATIONS & KEYFRAMES
+   ========================================================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes spinSlow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulseSlow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal {
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-spin-slow {
+  animation: spinSlow 3s linear infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 2s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   GLASSMORPHISM, CARDS & SURFACES
+   ========================================================================== */
+
+.agro-glass {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.agro-glass-dark {
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.agro-card {
+  background-color: var(--agro-surface);
+  border-radius: 1.25rem;
+  border: 1px solid var(--agro-border);
+  box-shadow: var(--agro-shadow-sm);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agro-card:hover {
+  box-shadow: var(--agro-shadow-md);
+  border-color: #cbd5e1;
+}
+
+.agro-card-elevated {
+  background-color: var(--agro-surface);
+  border-radius: 1.25rem;
+  border: 1px solid var(--agro-border);
+  box-shadow: var(--agro-shadow-md);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agro-card-elevated:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--agro-shadow-lg);
+}
+
+/* ==========================================================================
+   GRADIENT PRESETS
+   ========================================================================== */
+
+.bg-gradient-lime {
+  background: linear-gradient(135deg, #a3e635 0%, #84cc16 50%, #65a30d 100%);
+}
+
+.bg-gradient-lime-vibrant {
+  background: linear-gradient(135deg, #bef264 0%, #a3e635 50%, #84cc16 100%);
+}
+
+.bg-gradient-lime-dark {
+  background: linear-gradient(135deg, #3f6212 0%, #4d7c0f 50%, #65a30d 100%);
+}
+
+.bg-gradient-agro {
+  background: linear-gradient(135deg, #15803d 0%, #16a34a 50%, #22c55e 100%);
+}
+
+.bg-gradient-emerald-dark {
+  background: linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%);
+}
+
+.bg-gradient-amber {
+  background: linear-gradient(135deg, #b45309 0%, #d97706 50%, #f59e0b 100%);
+}
+
+.bg-gradient-blue {
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 50%, #38bdf8 100%);
+}
+
+.bg-gradient-slate {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%);
+}
+
+.bg-gradient-sunset {
+  background: linear-gradient(135deg, #c2410c 0%, #ea580c 50%, #f97316 100%);
+}
+
+/* ==========================================================================
+   FORM CONTROLS & INPUT STYLES
+   ========================================================================== */
+
+.agro-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #334155;
+  margin-bottom: 0.35rem;
+}
+
+.agro-input {
+  width: 100%;
+  background-color: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.agro-input:focus {
+  background-color: #ffffff;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+.agro-input::placeholder {
+  color: #94a3b8;
+}
+
+.agro-select {
+  width: 100%;
+  background-color: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agro-select:focus {
+  background-color: #ffffff;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+.agro-textarea {
+  width: 100%;
+  background-color: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  outline: none;
+  resize: vertical;
+  min-height: 80px;
+  transition: all 0.2s ease;
+}
+
+.agro-textarea:focus {
+  background-color: #ffffff;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+/* ==========================================================================
+   BUTTON STYLES
+   ========================================================================== */
+
+.agro-btn-primary {
+  background-color: #16a34a;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border: none;
+  box-shadow: var(--agro-shadow-green);
+}
+
+.agro-btn-primary:hover:not(:disabled) {
+  background-color: #15803d;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 20px -5px rgba(22, 163, 74, 0.35);
+}
+
+.agro-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.agro-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.agro-btn-secondary {
+  background-color: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+}
+
+.agro-btn-secondary:hover:not(:disabled) {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.agro-btn-danger {
+  background-color: #ef4444;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 4px 10px -2px rgba(239, 68, 68, 0.25);
+}
+
+.agro-btn-danger:hover:not(:disabled) {
+  background-color: #dc2626;
+  transform: translateY(-1px);
+}
+
+.agro-btn-outline {
+  background-color: transparent;
+  color: #16a34a;
+  font-weight: 700;
+  font-size: 0.875rem;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1.5px solid #16a34a;
+}
+
+.agro-btn-outline:hover:not(:disabled) {
+  background-color: #f0fdf4;
+}
+
+/* ==========================================================================
+   STATUS BADGES & TAGS
+   ========================================================================== */
+
+.agro-badge-emerald {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.agro-badge-amber {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.agro-badge-red {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.agro-badge-blue {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #e0f2fe;
+  color: #075985;
+}
+
+.agro-badge-slate {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+/* ==========================================================================
+   KPI & STATS CARDS
+   ========================================================================== */
+
+.agro-stat-card {
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: var(--agro-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.agro-stat-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.agro-stat-value {
+  font-size: 1.75rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #0f172a;
+  margin-top: 0.35rem;
+}
+
+.agro-stat-desc {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+}
+
+/* ==========================================================================
+   SPINNERS & LOADERS
+   ========================================================================== */
+
+.agro-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 9999px;
+  animation: spinSlow 0.8s linear infinite;
+}
+
+.agro-spinner-green {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2.5px solid rgba(22, 163, 74, 0.2);
+  border-top-color: #16a34a;
+  border-radius: 9999px;
+  animation: spinSlow 0.8s linear infinite;
+}
+
+.agro-spinner-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 2px;
+}

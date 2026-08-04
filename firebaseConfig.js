@@ -244,6 +244,16 @@ export const deleteFileByUrl = async (fileUrl) => {
 // SERVIÇO DE DADOS INICIAIS (SEED) & BACKUP
 // ========================================================================
 
+export const INITIAL_MANUAL_CATEGORIES = [
+    { nome: 'Stara', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6qtq1SIy-BWZWxleQCqe6Mb8ZT8_dCqbJew&s' },
+    { nome: 'New Holland', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZkPs8GKQdNNkyPBdmsZSB1VBMwwkasYLrOQ&s' },
+    { nome: 'John Deere', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRZ6TvOxu0S0PvFLB-g8jP5Kvj1QwlVVf4B-A&s' },
+    { nome: 'Case IH', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRjuqQ4DdHXUS2gV8Q0QaNZHZs2fFacEJU7jw&s' },
+    { nome: 'Massey Ferguson', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZI4AD6PNsAxRyV605Fo7h_QlyJIAnl7bZfg&s' },
+    { nome: 'Valtra', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQdjxN9pqkBIHPNpJWzqFklWyWsnwkE9Zwc5w&s' },
+    { nome: 'Jacto', imagem: 'https://jacto.com/assets/imgs/meta-image_c4a3a10168dd05886a9d.png' },
+];
+
 /**
  * Cria as categorias de manuais no Firestore para um novo usuário, se ainda não existirem.
  * Utiliza um documento de metadados para garantir idempotência.
@@ -260,15 +270,7 @@ export const seedInitialFirestoreData = async (userUid) => {
         }
 
         console.log('Populando categorias de manuais no Firestore para novo usuário...');
-        const initialCategories = [
-            { nome: 'Stara', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6qtq1SIy-BWZWxleQCqe6Mb8ZT8_dCqbJew&s' },
-            { nome: 'New Holland', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZkPs8GKQdNNkyPBdmsZSB1VBMwwkasYLrOQ&s' },
-            { nome: 'John Deere', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRZ6TvOxu0S0PvFLB-g8jP5Kvj1QwlVVf4B-A&s' },
-            { nome: 'Case IH', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRjuqQ4DdHXUS2gV8Q0QaNZHZs2fFacEJU7jw&s' },
-            { nome: 'Massey Ferguson', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZI4AD6PNsAxRyV605Fo7h_QlyJIAnl7bZfg&s' },
-            { nome: 'Valtra', imagem: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQdjxN9pqkBIHPNpJWzqFklWyWsnwkE9Zwc5w&s' },
-            { nome: 'Jacto', imagem: 'https://jacto.com/assets/imgs/meta-image_c4a3a10168dd05886a9d.png' },
-        ];
+        const initialCategories = INITIAL_MANUAL_CATEGORIES;
 
         const batch = writeBatch(db);
         const timestamp = serverTimestamp();
@@ -401,6 +403,7 @@ const FirebaseServices = {
     uploadFile,
     deleteFileByUrl,
     seedInitialFirestoreData,
+    INITIAL_MANUAL_CATEGORIES,
     downloadAllUserDataAsJson,
     uploadUserDataFromJson,
 };
