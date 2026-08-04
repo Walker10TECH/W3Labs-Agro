@@ -80,24 +80,90 @@ html, body {
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
 }
 
-/* Custom Scrollbar */
+/* Root React Native Web view — allow scroll */
+#root,
+#root > div,
+#root > div > div {
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ==========================================================================
+   GLOBAL SCROLLBAR STYLES (Webkit + Firefox)
+   ========================================================================== */
+
+/* Custom Scrollbar — all elements */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.02);
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgba(0, 0, 0, 0.03);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb {
   background: #94a3b8;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* All min-h-screen containers (every screen page) */
+.min-h-screen,
+[class*="min-h-screen"] {
+  overflow-y: auto !important;
+  overflow-x: hidden;
+}
+
+/* All modal/form scroll containers */
+.overflow-y-auto,
+[class*="overflow-y-auto"] {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+}
+
+/* Fixed overlay backdrops — ensure inner content scrolls */
+.fixed.inset-0 {
+  overflow-y: auto;
+}
+
+/* Modal form bodies — always scrollable */
+form[class*="max-h-"] {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+}
+
+/* Dark-themed scrollbars (for AgronomIA chatbot and dark modals) */
+.fixed.inset-0 ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.fixed.inset-0 ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.fixed.inset-0 ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* ==========================================================================
@@ -544,4 +610,188 @@ html, body {
   width: 1rem;
   height: 1rem;
   border-width: 2px;
+}
+
+/* ==========================================================================
+   RESPONSIVE — MOBILE FIRST (15% smaller on mobile < 640px)
+   ========================================================================== */
+
+@media (max-width: 639px) {
+
+  /* Global 15% scale reduction via root font-size (85% of 16px ≈ 13.6px) */
+  html {
+    font-size: 85%;
+  }
+
+  /* Tighter body padding */
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Page-level containers — reduced horizontal padding */
+  .px-4 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .py-6 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+  .py-8 { padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
+  .sm\:px-6 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .sm\:py-8 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+
+  /* Typography scale-down */
+  h1, .text-2xl, .text-3xl { font-size: 1.25rem !important; }
+  h2, .text-xl { font-size: 1.1rem !important; }
+  h3, .text-lg { font-size: 0.95rem !important; }
+  .text-base { font-size: 0.85rem !important; }
+  .text-sm { font-size: 0.78rem !important; }
+  .text-xs { font-size: 0.68rem !important; }
+
+  /* Grid gaps — tighter */
+  .gap-3 { gap: 0.5rem !important; }
+  .gap-4 { gap: 0.65rem !important; }
+  .gap-6 { gap: 0.85rem !important; }
+  .gap-8 { gap: 1rem !important; }
+  .space-y-4 > * + * { margin-top: 0.65rem !important; }
+  .space-y-6 > * + * { margin-top: 0.85rem !important; }
+
+  /* Margins — tighter */
+  .mb-6 { margin-bottom: 0.85rem !important; }
+  .mb-8 { margin-bottom: 1rem !important; }
+  .mt-8 { margin-top: 1rem !important; }
+
+  /* Cards and containers — compact padding */
+  .p-4 { padding: 0.65rem !important; }
+  .p-5 { padding: 0.75rem !important; }
+  .p-6 { padding: 0.85rem !important; }
+  .p-8 { padding: 1rem !important; }
+
+  /* Rounded corners — slightly smaller */
+  .rounded-3xl { border-radius: 1.25rem !important; }
+  .rounded-2xl { border-radius: 0.85rem !important; }
+
+  /* Hero/header gradient card */
+  .bg-gradient-to-r.from-emerald-800 {
+    padding: 1rem 1rem !important;
+  }
+
+  /* Grid columns — 3 per row on mobile (3+3+3+1) */
+  .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .md\:grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+
+  /* Stat cards — compact */
+  .agro-stat-card {
+    padding: 0.85rem;
+  }
+  .agro-stat-value {
+    font-size: 1.35rem;
+  }
+
+  /* Buttons — compact */
+  .agro-btn-primary,
+  .agro-btn-secondary,
+  .agro-btn-danger,
+  .agro-btn-outline {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.78rem;
+  }
+
+  /* Inputs — compact */
+  .agro-input,
+  .agro-select,
+  .agro-textarea {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  /* Modals — full-width, reduced spacing */
+  .fixed.inset-0 > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0;
+  }
+  .fixed.inset-0 .rounded-3xl,
+  .fixed.inset-0 .rounded-2xl {
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+  }
+  .fixed.inset-0 .max-w-lg,
+  .fixed.inset-0 .max-w-xl,
+  .fixed.inset-0 .max-w-md {
+    max-width: 100% !important;
+  }
+
+  /* Modal form bodies — reduce max-height on small screens */
+  form[class*="max-h-"] {
+    max-height: 70vh !important;
+  }
+
+  /* Icon containers — smaller */
+  .w-12.h-12 { width: 2.5rem !important; height: 2.5rem !important; }
+  .w-16.h-16 { width: 3rem !important; height: 3rem !important; }
+  .w-20.h-20 { width: 3.5rem !important; height: 3.5rem !important; }
+
+  /* FAB — slightly smaller */
+  .fixed.right-6.bottom-6 {
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+  }
+  .w-16.h-16.rounded-2xl {
+    width: 3.25rem !important;
+    height: 3.25rem !important;
+  }
+
+  /* Table overflows */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Search inputs full width */
+  input[type="search"],
+  input[type="text"].flex-1 {
+    width: 100% !important;
+  }
+
+  /* Tab bars — scrollable horizontally */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Extra-small screens (< 380px) — even tighter */
+@media (max-width: 379px) {
+  html {
+    font-size: 80%;
+  }
+
+  .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+
+  .p-4 { padding: 0.5rem !important; }
+  .p-6 { padding: 0.65rem !important; }
+
+  h1, .text-2xl, .text-3xl { font-size: 1.1rem !important; }
+}
+
+/* Tablets (640px - 1023px) — slight refinement */
+@media (min-width: 640px) and (max-width: 1023px) {
+  html {
+    font-size: 93%;
+  }
+
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .md\:grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+
+/* Desktop (1024px+) — full scale */
+@media (min-width: 1024px) {
+  html {
+    font-size: 100%;
+  }
 }
