@@ -19,6 +19,8 @@ import RevisoesScreen from './Screens/RevisoesScreen';
 
 const Stack = createNativeStackNavigator();
 
+import { PropertyProvider } from './context/PropertyContext';
+
 export default function W3LabsAgro() {
   const { fontsLoaded } = useAppFonts();
   const [initializing, setInitializing] = useState(true);
@@ -36,27 +38,29 @@ export default function W3LabsAgro() {
   if (initializing || !fontsLoaded) return null;
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
-          <>
-            {/* Telas para usuários autenticados */}
-            <Stack.Screen name="Dashboard" component={Dashboard} />
-            <Stack.Screen name="Plantios" component={PlantiosScreen} />
-            <Stack.Screen name="Colheitas" component={ColheitasScreen} />
-            <Stack.Screen name="Manager" component={ManagerScreen} />
-            <Stack.Screen name="Pulverizacao" component={PulverizacaoListaScreen} />
-            <Stack.Screen name="Diesel" component={DieselScreen} />
-            <Stack.Screen name="Manuais" component={Manuais} />
-            <Stack.Screen name="Andamento" component={PorcentagemListaScreen} />
-            <Stack.Screen name="Pluviometro" component={PluviometroListaScreen} />
-            <Stack.Screen name="Revisoes" component={RevisoesScreen} />
-          </>
-        ) : (
-          // Telas para usuários não autenticados
-          <Stack.Screen name="Login" component={LoginScreen} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <PropertyProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {user ? (
+            <>
+              {/* Telas para usuários autenticados */}
+              <Stack.Screen name="Dashboard" component={Dashboard} />
+              <Stack.Screen name="Plantios" component={PlantiosScreen} />
+              <Stack.Screen name="Colheitas" component={ColheitasScreen} />
+              <Stack.Screen name="Manager" component={ManagerScreen} />
+              <Stack.Screen name="Pulverizacao" component={PulverizacaoListaScreen} />
+              <Stack.Screen name="Diesel" component={DieselScreen} />
+              <Stack.Screen name="Manuais" component={Manuais} />
+              <Stack.Screen name="Andamento" component={PorcentagemListaScreen} />
+              <Stack.Screen name="Pluviometro" component={PluviometroListaScreen} />
+              <Stack.Screen name="Revisoes" component={RevisoesScreen} />
+            </>
+          ) : (
+            // Telas para usuários não autenticados
+            <Stack.Screen name="Login" component={LoginScreen} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </PropertyProvider>
   );
 }

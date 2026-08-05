@@ -31,6 +31,7 @@ import {
     orderBy
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { usePropertyAuth } from '../context/PropertyContext';
 import OpenSourceMap from '../components/OpenSourceMap';
 import FarmMapModal from '../components/FarmMapModal';
 import CoordinatePickerModal from '../components/CoordinatePickerModal';
@@ -129,6 +130,7 @@ export default function ManagerScreen({ navigation, route }) {
 // =========================================================================
 
 export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [talhoes, setTalhoes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -137,7 +139,7 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
     const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'map'
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'talhoes'), orderBy('nome', 'asc'));
@@ -149,7 +151,7 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     const stats = useMemo(() => {
         let areaTotalGeral = 0;
@@ -176,8 +178,9 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
     }, [talhoes, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este talhão?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'talhoes', id));
@@ -222,13 +225,19 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
                         <span>Mapa da Propriedade</span>
                     </button>
 
-                    <button
-                        onClick={() => setModal({ visible: true, itemId: null })}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                    >
-                        <PlusCircle size={18} />
-                        <span>Novo Talhão</span>
-                    </button>
+                    {isAdmin ? (
+                        <button
+                            onClick={() => setModal({ visible: true, itemId: null })}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                        >
+                            <PlusCircle size={18} />
+                            <span>Novo Talhão</span>
+                        </button>
+                    ) : (
+                        <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                            <span>👤 Visualização</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -405,24 +414,26 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
                                             <span>Ver no Mapa</span>
                                         </button>
 
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                onClick={() => setModal({ visible: true, itemId: item.id })}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                                title="Editar"
-                                            >
-                                                <Pencil size={15} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                                title="Excluir"
-                                            >
-                                                <Trash2 size={15} />
-                                                <span>Excluir</span>
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={15} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                    title="Excluir"
+                                                >
+                                                    <Trash2 size={15} />
+                                                    <span>Excluir</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -432,9 +443,10 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
             </div>
 
             {/* Modal de Cadastro / Edição do Talhão */}
-            {modal.visible && (
+            {modal.visible && isAdmin && (
                 <ModalAddOrEditTalhao
                     itemId={modal.itemId}
+                    effectiveUid={effectiveUid}
                     onClose={() => setModal({ visible: false, itemId: null })}
                 />
             )}
@@ -450,7 +462,7 @@ export function TalhoesListaScreen({ navigation, hideHeaderBack }) {
     );
 }
 
-function ModalAddOrEditTalhao({ itemId, onClose }) {
+function ModalAddOrEditTalhao({ itemId, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [nome, setNome] = useState('');
@@ -466,7 +478,7 @@ function ModalAddOrEditTalhao({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'talhoes', itemId));
@@ -485,7 +497,7 @@ function ModalAddOrEditTalhao({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     // Captura GPS Atual via Geolocation API + OpenStreetMap Nominatim
     const handleGetGps = async () => {
@@ -516,7 +528,7 @@ function ModalAddOrEditTalhao({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -687,7 +699,6 @@ function ModalAddOrEditTalhao({ itemId, onClose }) {
                 )}
             </div>
 
-            {/* Modal Seletor de Coordenadas no Mapa */}
             {showCoordinatePicker && (
                 <CoordinatePickerModal
                     initialCoordinates={coordenadas}
@@ -709,6 +720,7 @@ function ModalAddOrEditTalhao({ itemId, onClose }) {
 // =========================================================================
 
 export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [estoque, setEstoque] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('todos');
@@ -716,7 +728,7 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
     const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'estoqueGeral'), orderBy('nome', 'asc'));
@@ -728,7 +740,7 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     const stats = useMemo(() => {
         let valorTotalEstoque = 0;
@@ -765,8 +777,9 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
     }, [estoque, activeTab, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este item do almoxarifado?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'estoqueGeral', id));
@@ -796,13 +809,19 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setModal({ visible: true, itemId: null })}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                >
-                    <PlusCircle size={18} />
-                    <span>Novo Item</span>
-                </button>
+                {isAdmin ? (
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Novo Item</span>
+                    </button>
+                ) : (
+                    <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                        <span>👤 Visualização</span>
+                    </div>
+                )}
             </div>
 
             {/* Metrics */}
@@ -883,67 +902,75 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
                             <Warehouse size={24} />
                         </div>
-                        <h3 className="text-base font-bold text-slate-700">Nenhum insumo encontrado</h3>
+                        <h3 className="text-base font-bold text-slate-700">Nenhum item encontrado</h3>
                         <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                            Cadastre novos produtos para gerenciar o saldo e alertas de reposição.
+                            Cadastre insumos, adubos, sementes e defensivos agrícolas para controle automático de saldo.
                         </p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filtered.map((item) => {
                             const qtd = parseMoeda(item.quantidade || 0);
+                            const val = parseMoeda(item.valorUnitario || 0);
                             const min = parseMoeda(item.estoqueMinimo || 0);
-                            const isBaixo = min > 0 && qtd <= min;
+                            const isLow = min > 0 && qtd <= min;
 
                             return (
                                 <div
                                     key={item.id}
                                     className={`bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
-                                        isBaixo ? 'border-red-200 bg-red-50/20' : 'border-slate-200/80'
+                                        isLow ? 'border-amber-300 ring-1 ring-amber-300/40 bg-amber-50/10' : 'border-slate-200/80'
                                     }`}
                                 >
                                     <div>
                                         <div className="flex items-start justify-between gap-2 mb-3">
                                             <div>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                                    {item.tipo || 'Insumo'}
+                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                                    item.tipo === 'Defensivo' ? 'bg-amber-100 text-amber-800' :
+                                                    item.tipo === 'Fertilizante' ? 'bg-emerald-100 text-emerald-800' :
+                                                    item.tipo === 'Semente' ? 'bg-blue-100 text-blue-800' :
+                                                    item.tipo === 'Peça' ? 'bg-indigo-100 text-indigo-800' :
+                                                    'bg-slate-100 text-slate-800'
+                                                }`}>
+                                                    {item.tipo || 'Geral'}
                                                 </span>
                                                 <h3 className="text-base font-bold text-slate-800 mt-1">
-                                                    {item.nome}
+                                                    {item.nome || 'Item sem nome'}
                                                 </h3>
-                                                {item.fabricante && (
-                                                    <span className="text-xs text-slate-500 font-medium">
-                                                        {item.fabricante}
-                                                    </span>
-                                                )}
                                             </div>
 
                                             <div className="text-right">
-                                                <span className={`text-lg font-black ${isBaixo ? 'text-red-600' : 'text-emerald-700'}`}>
-                                                    {formatNumero(qtd)} {item.unidade || 'un'}
+                                                <span className={`text-lg font-black ${isLow ? 'text-amber-600' : 'text-slate-800'}`}>
+                                                    {formatNumero(qtd)} <span className="text-xs font-semibold text-slate-500">{item.unidade || 'un'}</span>
                                                 </span>
-                                                {isBaixo && (
-                                                    <div className="text-[10px] font-bold text-red-600 uppercase">
-                                                        Estoque Baixo!
-                                                    </div>
+                                                {isLow && (
+                                                    <span className="block text-[10px] font-bold text-amber-700 uppercase tracking-tight">
+                                                        Estoque Baixo
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
 
                                         <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3">
-                                            {item.valorUnitario && (
+                                            {item.fabricante && (
                                                 <div className="flex justify-between">
-                                                    <span className="text-slate-400">Preço Unitário:</span>
-                                                    <span className="font-semibold">R$ {formatMoeda(item.valorUnitario)}</span>
+                                                    <span className="text-slate-400">Marca / Fab:</span>
+                                                    <span className="font-semibold">{item.fabricante}</span>
+                                                </div>
+                                            )}
+                                            {val > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-400">Valor Unit:</span>
+                                                    <span className="font-semibold text-emerald-700">R$ {formatMoeda(val)} / {item.unidade || 'un'}</span>
                                                 </div>
                                             )}
                                             {item.localizacao && (
                                                 <div className="flex justify-between">
-                                                    <span className="text-slate-400">Localização / Galpão:</span>
-                                                    <span className="font-semibold text-slate-700">{item.localizacao}</span>
+                                                    <span className="text-slate-400">Localização:</span>
+                                                    <span className="font-semibold">{item.localizacao}</span>
                                                 </div>
                                             )}
-                                            {item.estoqueMinimo && (
+                                            {min > 0 && (
                                                 <div className="flex justify-between">
                                                     <span className="text-slate-400">Estoque Mínimo:</span>
                                                     <span className="font-semibold text-slate-700">{item.estoqueMinimo} {item.unidade}</span>
@@ -958,22 +985,26 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
                                         )}
                                     </div>
 
-                                    <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                        <button
-                                            onClick={() => setModal({ visible: true, itemId: item.id })}
-                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                        >
-                                            <Pencil size={16} />
-                                            <span>Editar</span>
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(item.id)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                        >
-                                            <Trash2 size={16} />
-                                            <span>Excluir</span>
-                                        </button>
-                                    </div>
+                                    {isAdmin && (
+                                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                            <button
+                                                onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={16} />
+                                                <span>Editar</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 size={16} />
+                                                <span>Excluir</span>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -982,9 +1013,10 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
             </div>
 
             {/* Modal Estoque */}
-            {modal.visible && (
+            {modal.visible && isAdmin && (
                 <ModalAddOrEditEstoque
                     itemId={modal.itemId}
+                    effectiveUid={effectiveUid}
                     onClose={() => setModal({ visible: false, itemId: null })}
                 />
             )}
@@ -992,7 +1024,7 @@ export function EstoqueGeralScreen({ navigation, hideHeaderBack }) {
     );
 }
 
-function ModalAddOrEditEstoque({ itemId, onClose }) {
+function ModalAddOrEditEstoque({ itemId, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [nome, setNome] = useState('');
@@ -1008,7 +1040,7 @@ function ModalAddOrEditEstoque({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'estoqueGeral', itemId));
@@ -1030,7 +1062,7 @@ function ModalAddOrEditEstoque({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -1041,7 +1073,7 @@ function ModalAddOrEditEstoque({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -1247,13 +1279,14 @@ function ModalAddOrEditEstoque({ itemId, onClose }) {
 // =========================================================================
 
 export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [maquinas, setMaquinas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'inventario'), orderBy('marca', 'asc'));
@@ -1265,7 +1298,7 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     const stats = useMemo(() => {
         let valorTotalFrota = 0;
@@ -1295,8 +1328,9 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
     }, [maquinas, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir esta máquina da frota?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'inventario', id));
@@ -1326,13 +1360,19 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setModal({ visible: true, itemId: null })}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                >
-                    <PlusCircle size={18} />
-                    <span>Nova Máquina</span>
-                </button>
+                {isAdmin ? (
+                    <button
+                        onClick={() => setModal({ visible: true, itemId: null })}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                    >
+                        <PlusCircle size={18} />
+                        <span>Nova Máquina</span>
+                    </button>
+                ) : (
+                    <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                        <span>👤 Visualização</span>
+                    </div>
+                )}
             </div>
 
             {/* Metrics */}
@@ -1366,20 +1406,20 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                             <CheckCircle2 size={18} />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-emerald-700">{stats.operacionais}</div>
-                    <div className="text-xs text-slate-500 mt-1">Ativos e disponíveis para trabalho</div>
+                    <div className="text-2xl font-black text-slate-800">{stats.operacionais}</div>
+                    <div className="text-xs text-slate-500 mt-1">Disponíveis para uso imediato</div>
                 </div>
             </div>
 
-            {/* Search */}
-            <div className="mb-6">
+            {/* Filter */}
+            <div className="flex items-center justify-between gap-3 mb-6">
                 <div className="relative w-full sm:w-80">
                     <input
                         type="text"
-                        placeholder="Buscar marca, modelo, chassi..."
+                        placeholder="Buscar por marca, modelo, chassi..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
                     />
                     <Search size={16} className="absolute left-3 top-3 text-slate-400" />
                 </div>
@@ -1390,25 +1430,22 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                 {loading ? (
                     <div className="py-20 flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-                        <span className="text-xs font-semibold text-slate-500">Carregando frota...</span>
+                        <span className="text-xs font-semibold text-slate-500">Carregando inventário...</span>
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
                             <Tractor size={24} />
                         </div>
-                        <h3 className="text-base font-bold text-slate-700">Nenhum equipamento cadastrado</h3>
+                        <h3 className="text-base font-bold text-slate-700">Nenhuma máquina cadastrada</h3>
                         <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                            Clique em "Nova Máquina" para catalogar os veículos e implementos da fazenda.
+                            Cadastre seus tratores, pulverizadores, colheitadeiras e implementos agrícolas.
                         </p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filtered.map((item) => {
-                            const statusColor = 
-                                item.status === 'Em Manutenção' ? 'bg-amber-100 text-amber-800' :
-                                item.status === 'Inativo' ? 'bg-slate-200 text-slate-700' :
-                                'bg-emerald-100 text-emerald-800';
+                            const val = parseMoeda(item.valorEstimado || 0);
 
                             return (
                                 <div
@@ -1418,21 +1455,35 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                                     <div>
                                         <div className="flex items-start justify-between gap-2 mb-3">
                                             <div>
-                                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
-                                                    {item.status || 'Ativo'}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                                        {item.tipo || 'Máquina'}
+                                                    </span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                        item.status === 'Inativo' ? 'bg-slate-100 text-slate-600' :
+                                                        item.status === 'Em Manutenção' ? 'bg-amber-100 text-amber-800' :
+                                                        'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    }`}>
+                                                        {item.status || 'Ativo'}
+                                                    </span>
+                                                </div>
                                                 <h3 className="text-base font-bold text-slate-800 mt-1">
                                                     {item.marca} {item.modelo}
                                                 </h3>
-                                                <div className="text-xs text-slate-500 font-medium">
-                                                    {item.tipo} {item.ano ? `(${item.ano})` : ''}
-                                                </div>
+                                                {item.ano && (
+                                                    <span className="text-xs text-slate-400 font-medium">Ano: {item.ano}</span>
+                                                )}
                                             </div>
 
-                                            {item.valorEstimado && (
-                                                <span className="text-sm font-black text-slate-800">
-                                                    R$ {formatMoeda(item.valorEstimado)}
-                                                </span>
+                                            {val > 0 && (
+                                                <div className="text-right">
+                                                    <span className="text-base font-black text-slate-800">
+                                                        R$ {formatMoeda(val)}
+                                                    </span>
+                                                    <span className="block text-[10px] text-slate-400">
+                                                        Avaliação
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
 
@@ -1440,13 +1491,13 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                                             {item.horimetroKm && (
                                                 <div className="flex justify-between">
                                                     <span className="text-slate-400">Horímetro / KM:</span>
-                                                    <span className="font-semibold">{item.horimetroKm} h/km</span>
+                                                    <span className="font-semibold">{item.horimetroKm}</span>
                                                 </div>
                                             )}
                                             {item.placaChassi && (
                                                 <div className="flex justify-between">
                                                     <span className="text-slate-400">Placa / Chassi:</span>
-                                                    <span className="font-semibold text-slate-700">{item.placaChassi}</span>
+                                                    <span className="font-semibold">{item.placaChassi}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -1458,22 +1509,26 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
                                         )}
                                     </div>
 
-                                    <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                        <button
-                                            onClick={() => setModal({ visible: true, itemId: item.id })}
-                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                        >
-                                            <Pencil size={16} />
-                                            <span>Editar</span>
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(item.id)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                        >
-                                            <Trash2 size={16} />
-                                            <span>Excluir</span>
-                                        </button>
-                                    </div>
+                                    {isAdmin && (
+                                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                            <button
+                                                onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={16} />
+                                                <span>Editar</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                title="Excluir"
+                                            >
+                                                <Trash2 size={16} />
+                                                <span>Excluir</span>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -1482,9 +1537,10 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
             </div>
 
             {/* Modal Máquinas */}
-            {modal.visible && (
+            {modal.visible && isAdmin && (
                 <ModalAddOrEditMaquina
                     itemId={modal.itemId}
+                    effectiveUid={effectiveUid}
                     onClose={() => setModal({ visible: false, itemId: null })}
                 />
             )}
@@ -1492,7 +1548,7 @@ export function InventarioMaquinasScreen({ navigation, hideHeaderBack }) {
     );
 }
 
-function ModalAddOrEditMaquina({ itemId, onClose }) {
+function ModalAddOrEditMaquina({ itemId, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [marca, setMarca] = useState('');
@@ -1508,7 +1564,7 @@ function ModalAddOrEditMaquina({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'inventario', itemId));
@@ -1530,7 +1586,7 @@ function ModalAddOrEditMaquina({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -1540,7 +1596,7 @@ function ModalAddOrEditMaquina({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {

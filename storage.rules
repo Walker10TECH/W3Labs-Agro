@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Regra global para arquivos da fazenda (manuais, romaneios, comprovantes)
+    match /{allPaths=**} {
+      // Leitura permitida para qualquer usuário autenticado na plataforma
+      allow read: if request.auth != null;
+      
+      // Escrita/Upload permitido para usuários autenticados com limite de 50MB por arquivo
+      allow write: if request.auth != null 
+                   && request.resource.size < 50 * 1024 * 1024;
+      
+      // Exclusão permitida para usuários autenticados
+      allow delete: if request.auth != null;
+    }
+  }
+}

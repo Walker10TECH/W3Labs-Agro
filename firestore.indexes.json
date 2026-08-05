@@ -1,0 +1,413 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "pulverizacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataAplicacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pulverizacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "talhao", "order": "ASCENDING" },
+        { "fieldPath": "dataAplicacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pulverizacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataAplicacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pulverizacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pragaAlvo", "order": "ASCENDING" },
+        { "fieldPath": "dataAplicacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plantios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataPlantio", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plantios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "talhao", "order": "ASCENDING" },
+        { "fieldPath": "dataPlantio", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plantios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "safra", "order": "DESCENDING" },
+        { "fieldPath": "dataPlantio", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plantios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cultura", "order": "ASCENDING" },
+        { "fieldPath": "dataPlantio", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "colheitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataColheita", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "colheitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "talhao", "order": "ASCENDING" },
+        { "fieldPath": "dataColheita", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "colheitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "safra", "order": "DESCENDING" },
+        { "fieldPath": "dataColheita", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "colheitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "produtividadeScHa", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revisoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataRevisao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revisoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dataRevisao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revisoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "maquina", "order": "ASCENDING" },
+        { "fieldPath": "dataRevisao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revisoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "dataRevisao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "diesel",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "diesel",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "diesel",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "maquina", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "diesel",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fornecedor", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "estoqueGeral",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "estoqueGeral",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "estoqueGeral",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "estoqueGeral",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "quantidade", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pluviometro",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataMedicao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pluviometro",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "talhao", "order": "ASCENDING" },
+        { "fieldPath": "dataMedicao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pluviometro",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "milimetros", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "porcentagens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "porcentagens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "safra", "order": "DESCENDING" },
+        { "fieldPath": "dataAtualizacao", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "talhoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "talhoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "area", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "talhoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "marca", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "marca", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ano", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventario",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "marca", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "manuais",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "titulo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "manuais",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "titulo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "manuais",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "marca", "order": "ASCENDING" },
+        { "fieldPath": "titulo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "manualCategorias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nome", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "codigoPropriedade", "order": "ASCENDING" },
+        { "fieldPath": "role", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membros",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membros",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatbot_conversas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "atualizadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatbot_conversas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatbot_mensagens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatbot_mensagens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consultas_ia",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consultas_ia",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "topico", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "consultas_ia",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipoDiagnostico", "order": "ASCENDING" },
+        { "fieldPath": "data", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditoria_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataHora", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditoria_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "modulo", "order": "ASCENDING" },
+        { "fieldPath": "dataHora", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditoria_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipoAcao", "order": "ASCENDING" },
+        { "fieldPath": "dataHora", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

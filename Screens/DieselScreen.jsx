@@ -27,6 +27,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { usePropertyAuth } from '../context/PropertyContext';
 
 const parseMoeda = (val) => {
     if (typeof val === 'number') return val;
@@ -49,6 +50,7 @@ const formatDate = (dateVal) => {
 };
 
 export default function DieselScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [registros, setRegistros] = useState([]);
     const [maquinas, setMaquinas] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -60,7 +62,7 @@ export default function DieselScreen({ navigation }) {
 
     // Fetch Registros de Diesel (Real-time)
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'diesel'), orderBy('data', 'desc'));
@@ -74,12 +76,12 @@ export default function DieselScreen({ navigation }) {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Fetch Máquinas / Inventário
     useEffect(() => {
         const fetchMaquinas = async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDocs(collection(db, 'users', uid, 'inventario'));
@@ -89,7 +91,7 @@ export default function DieselScreen({ navigation }) {
             }
         };
         fetchMaquinas();
-    }, []);
+    }, [effectiveUid]);
 
     // Métricas de Estoque e Consumo
     const stats = useMemo(() => {
@@ -137,8 +139,9 @@ export default function DieselScreen({ navigation }) {
     }, [registros, activeTab, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este registro de diesel?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'diesel', id));
@@ -168,22 +171,28 @@ export default function DieselScreen({ navigation }) {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setModalEntrada({ visible: true, itemId: null })}
-                            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                        >
-                            <PlusCircle size={18} />
-                            <span>Entrada (Compra)</span>
-                        </button>
-                        <button
-                            onClick={() => setModalSaida({ visible: true, itemId: null })}
-                            className="px-3.5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-950/10"
-                        >
-                            <MinusCircle size={18} />
-                            <span>Abastecer</span>
-                        </button>
-                    </div>
+                    {isAdmin ? (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setModalEntrada({ visible: true, itemId: null })}
+                                className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                            >
+                                <PlusCircle size={18} />
+                                <span>Entrada (Compra)</span>
+                            </button>
+                            <button
+                                onClick={() => setModalSaida({ visible: true, itemId: null })}
+                                className="px-3.5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-950/10"
+                            >
+                                <MinusCircle size={18} />
+                                <span>Abastecer</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                            <span>👤 Visualização</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Metric Summary Cards */}
@@ -351,28 +360,36 @@ export default function DieselScreen({ navigation }) {
 
                                         {/* Actions */}
                                         <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                            <button
-                                                onClick={() => {
-                                                    if (isEntrada) {
-                                                        setModalEntrada({ visible: true, itemId: item.id });
-                                                    } else {
-                                                        setModalSaida({ visible: true, itemId: item.id });
-                                                    }
-                                                }}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                                title="Editar"
-                                            >
-                                                <Pencil size={16} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                                title="Excluir"
-                                            >
-                                                <Trash2 size={16} />
-                                                <span>Excluir</span>
-                                            </button>
+                                            {isAdmin ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (isEntrada) {
+                                                                setModalEntrada({ visible: true, itemId: item.id });
+                                                            } else {
+                                                                setModalSaida({ visible: true, itemId: item.id });
+                                                            }
+                                                        }}
+                                                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                        title="Editar"
+                                                    >
+                                                        <Pencil size={16} />
+                                                        <span>Editar</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(item.id)}
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                        title="Excluir"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                        <span>Excluir</span>
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-400 font-semibold">
+                                                    Somente Leitura
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -381,18 +398,20 @@ export default function DieselScreen({ navigation }) {
                     )}
                 </div>
 
-                {/* Modais de Entrada e Saída */}
-                {modalEntrada.visible && (
+                {/* Modais de Entrada e Saída (Apenas Admin) */}
+                {modalEntrada.visible && isAdmin && (
                     <ModalEntradaDiesel
                         itemId={modalEntrada.itemId}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModalEntrada({ visible: false, itemId: null })}
                     />
                 )}
 
-                {modalSaida.visible && (
+                {modalSaida.visible && isAdmin && (
                     <ModalSaidaDiesel
                         itemId={modalSaida.itemId}
                         maquinas={maquinas}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModalSaida({ visible: false, itemId: null })}
                     />
                 )}
@@ -403,7 +422,7 @@ export default function DieselScreen({ navigation }) {
 }
 
 // Modal de Registro de Entrada (Compra de Diesel)
-function ModalEntradaDiesel({ itemId, onClose }) {
+function ModalEntradaDiesel({ itemId, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [fornecedor, setFornecedor] = useState('');
@@ -415,7 +434,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'diesel', itemId));
@@ -433,7 +452,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -444,7 +463,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -522,7 +541,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="Ex: 27500,00"
+                                    placeholder="Ex: 28500,00"
                                     value={valorTotal}
                                     onChange={(e) => setValorTotal(e.target.value)}
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white"
@@ -532,7 +551,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
 
                         <div>
                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                                Data da Compra *
+                                Data da Compra / Chegada *
                             </label>
                             <input
                                 type="date"
@@ -545,29 +564,29 @@ function ModalEntradaDiesel({ itemId, onClose }) {
 
                         <div>
                             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                                Observações / NF
+                                Observações
                             </label>
                             <textarea
                                 rows={2}
-                                placeholder="Número da NF, tanque de armazenamento..."
+                                placeholder="Nota fiscal, tanque de destino..."
                                 value={observacoes}
                                 onChange={(e) => setObservacoes(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white resize-none"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white resize-none"
                             />
                         </div>
 
-                        <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+                        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors cursor-pointer"
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={saving}
-                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-emerald-950/10 disabled:opacity-50"
                             >
                                 {saving ? 'Salvando...' : 'Salvar Entrada'}
                             </button>
@@ -580,7 +599,7 @@ function ModalEntradaDiesel({ itemId, onClose }) {
 }
 
 // Modal de Registro de Saída (Abastecimento de Máquinas)
-function ModalSaidaDiesel({ itemId, maquinas, onClose }) {
+function ModalSaidaDiesel({ itemId, maquinas, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [maquina, setMaquina] = useState('');
@@ -593,7 +612,7 @@ function ModalSaidaDiesel({ itemId, maquinas, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'diesel', itemId));
@@ -612,7 +631,7 @@ function ModalSaidaDiesel({ itemId, maquinas, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -623,7 +642,7 @@ function ModalSaidaDiesel({ itemId, maquinas, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {

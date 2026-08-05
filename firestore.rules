@@ -1,0 +1,261 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========================================================================
+    // MODO DE DESENVOLVIMENTO & TRANSIÇÃO (Ativo até 30/11/2026)
+    // Garante acesso contínuo durante desenvolvimento e testes do app.
+    // ========================================================================
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2026, 11, 30);
+    }
+
+    // ========================================================================
+    // FUNÇÕES AUXILIARES DE SEGURANÇA E AUTENTICAÇÃO (PRODUÇÃO / MULTI-TENANT)
+    // ========================================================================
+
+    // Verifica se a requisição é de um usuário autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verifica se o usuário logado é o titular do UID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Obtém os dados de perfil do usuário atual
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Verifica se o usuário atual é Administrador da plataforma/fazenda
+    function isAdmin() {
+      return isAuthenticated() && (
+        getUserData().role == 'admin' || 
+        !('role' in getUserData())
+      );
+    }
+
+    // Verifica se o usuário atual é o Administrador ou um Membro vinculado à fazenda
+    function isMemberOf(adminUid) {
+      return isAuthenticated() && (
+        request.auth.uid == adminUid ||
+        (getUserData().adminUid == adminUid && getUserData().role == 'membro') ||
+        exists(/databases/$(database)/documents/users/$(adminUid)/membros/$(request.auth.uid))
+      );
+    }
+
+    // ========================================================================
+    // 1. COLEÇÃO GLOBAL DE USUÁRIOS (/users/{userId})
+    // ========================================================================
+    match /users/{userId} {
+      // Leitura de perfis permitida para qualquer usuário autenticado (busca de equipe e convites)
+      allow read: if isAuthenticated();
+
+      // Criação do próprio perfil no registro
+      allow create: if isOwner(userId);
+
+      // Atualização permitida para o próprio usuário ou para o Administrador ao vincular/desvincular
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        (resource.data.adminUid == request.auth.uid)
+      );
+
+      // Exclusão permitida apenas para o próprio titular
+      allow delete: if isOwner(userId);
+
+      // ----------------------------------------------------------------------
+      // SUBCOLEÇÕES MULTI-TENANT DA FAZENDA (/users/{userId}/{collectionName})
+      // ----------------------------------------------------------------------
+
+      // 1. Pulverizações & Calda (Screens/PulverizacaoScreen.jsx)
+      match /pulverizacoes/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 2. Plantios & Variedades (Screens/PlantioColheitaScreen.jsx)
+      match /plantios/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 3. Colheitas & Produtividade (Screens/PlantioColheitaScreen.jsx)
+      match /colheitas/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 4. Revisões & Manutenção de Frota (Screens/RevisoesScreen.jsx)
+      match /revisoes/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 5. Controle de Diesel & Abastecimentos (Screens/DieselScreen.jsx)
+      match /diesel/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 6. Almoxarifado & Estoque Geral (Screens/ManagerScreen.jsx)
+      match /estoqueGeral/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 7. Pluviômetro & Chuvas (Screens/PorcentagemPluviometroScreen.jsx)
+      match /pluviometro/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 8. % Andamento da Safra (Screens/PorcentagemPluviometroScreen.jsx)
+      match /porcentagens/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 9. Talhões & Georreferenciamento (Screens/ManagerScreen.jsx)
+      match /talhoes/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 10. Inventário de Máquinas & Veículos (Screens/ManagerScreen.jsx)
+      match /inventario/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 11. Manuais Técnicos & Categorias (Screens/ManuaisScreen.jsx)
+      match /manuais/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /manualCategorias/{docId} {
+        allow read: if isMemberOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 12. Gestão de Membros da Equipe (components/PropertyControlModal.jsx)
+      match /membros/{memberDocId} {
+        allow read: if isMemberOf(userId);
+        allow create, update: if isOwner(userId) || request.auth.uid == memberDocId;
+        allow delete: if isOwner(userId) || request.auth.uid == memberDocId;
+      }
+
+      // 13. Convites Pendentes da Propriedade
+      match /convites/{inviteId} {
+        allow read: if isOwner(userId) || isAuthenticated();
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      // 14. Chatbot IA Agronômica (components/AgronomiaChatbot.jsx)
+      match /chatbot_conversas/{conversaId} {
+        allow read, write: if isMemberOf(userId);
+      }
+
+      match /chatbot_mensagens/{mensagemId} {
+        allow read, write: if isMemberOf(userId);
+      }
+
+      match /consultas_ia/{consultaId} {
+        allow read, write: if isMemberOf(userId);
+      }
+
+      // 15. Logs de Auditoria & Atividades
+      match /auditoria_logs/{logId} {
+        allow read: if isMemberOf(userId);
+        allow create: if isMemberOf(userId);
+        allow update, delete: if isOwner(userId);
+      }
+    }
+
+    // ========================================================================
+    // 2. ÍNDICE GLOBAL DE PROPRIEDADES (/propriedades/{codigoPropriedade})
+    // ========================================================================
+    match /propriedades/{codigoPropriedade} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.adminUid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.adminUid == request.auth.uid;
+    }
+
+    // ========================================================================
+    // 3. ÍNDICE GLOBAL DE CONVITES PENDENTES (/convitesPendentes/{emailKey})
+    // ========================================================================
+    match /convitesPendentes/{emailKey} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource.data.adminUid == request.auth.uid ||
+        request.auth.token.email == resource.data.email
+      );
+    }
+
+    // ========================================================================
+    // 4. BIBLIOTECA GLOBAL DE MANUAIS COMPARTILHADOS
+    // ========================================================================
+    match /manuais/{manualId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    match /manualCategorias/{catId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    // ========================================================================
+    // 5. SUPORTE A CONSULTAS EM GRUPO DE COLEÇÕES (Collection Group Queries)
+    // ========================================================================
+    match /{path=**}/pulverizacoes/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/plantios/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/colheitas/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/revisoes/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/diesel/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/estoqueGeral/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/pluviometro/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/porcentagens/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/talhoes/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/inventario/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/membros/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/chatbot_conversas/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/chatbot_mensagens/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/consultas_ia/{docId} {
+      allow read: if isAuthenticated();
+    }
+    match /{path=**}/auditoria_logs/{docId} {
+      allow read: if isAuthenticated();
+    }
+  }
+}

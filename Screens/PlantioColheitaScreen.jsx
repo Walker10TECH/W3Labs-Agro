@@ -35,6 +35,7 @@ import {
     orderBy
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { usePropertyAuth } from '../context/PropertyContext';
 import { analyzeRomaneioFile, processRomaneioWithGroqVision } from '../services/romaneioAIService';
 import PdfViewerModal from '../components/PdfViewerModal';
 
@@ -63,13 +64,14 @@ const formatDate = (dateVal) => {
 // =========================================================================
 
 export function PlantiosScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [plantios, setPlantios] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'plantios'), orderBy('dataPlantio', 'desc'));
@@ -81,7 +83,7 @@ export function PlantiosScreen({ navigation }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Estatísticas de Plantio
     const stats = useMemo(() => {
@@ -112,8 +114,9 @@ export function PlantiosScreen({ navigation }) {
     }, [plantios, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este registro de plantio?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'plantios', id));
@@ -143,13 +146,19 @@ export function PlantiosScreen({ navigation }) {
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => setModal({ visible: true, itemId: null })}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                    >
-                        <PlusCircle size={18} />
-                        <span>Novo Plantio</span>
-                    </button>
+                    {isAdmin ? (
+                        <button
+                            onClick={() => setModal({ visible: true, itemId: null })}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                        >
+                            <PlusCircle size={18} />
+                            <span>Novo Plantio</span>
+                        </button>
+                    ) : (
+                        <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                            <span>👤 Visualização</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Metric Cards */}
@@ -161,39 +170,39 @@ export function PlantiosScreen({ navigation }) {
                                 <Sprout size={16} />
                             </div>
                         </div>
-                        <div className="text-3xl font-black tracking-tight">{formatNumero(stats.areaTotal)} <span className="text-sm font-semibold text-green-200">ha</span></div>
-                        <div className="text-xs text-green-100 mt-1">Soma de todos os talhões semeados</div>
+                        <div className="text-3xl font-black tracking-tight">{formatNumero(stats.areaTotal)} <span className="text-sm font-semibold text-emerald-200">ha</span></div>
+                        <div className="text-xs text-emerald-100 mt-1">Soma de todos os talhões semeados</div>
                     </div>
 
                     <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Lotes de Plantio</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Talhões em Andamento</span>
                             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                                 <Layers size={16} />
                             </div>
                         </div>
                         <div className="text-2xl font-black text-slate-800">{stats.totalPlantios}</div>
-                        <div className="text-xs text-slate-500 mt-1">Registros de semeadura na safra</div>
+                        <div className="text-xs text-slate-500 mt-1">Registros de semeadura ativos</div>
                     </div>
 
                     <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Culturas Ativas</span>
-                            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Culturas Distintas</span>
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                                 <Leaf size={16} />
                             </div>
                         </div>
                         <div className="text-2xl font-black text-slate-800">{stats.culturasCount}</div>
-                        <div className="text-xs text-slate-500 mt-1">Variedades distintas em campo</div>
+                        <div className="text-xs text-slate-500 mt-1">Variedades em cultivo na fazenda</div>
                     </div>
                 </div>
 
-                {/* Search Bar */}
-                <div className="mb-6">
+                {/* Filter */}
+                <div className="flex items-center justify-between gap-3 mb-6">
                     <div className="relative w-full sm:w-80">
                         <input
                             type="text"
-                            placeholder="Buscar cultura, talhão, variedade..."
+                            placeholder="Buscar por cultura, talhão, variedade..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-sm"
@@ -216,7 +225,7 @@ export function PlantiosScreen({ navigation }) {
                             </div>
                             <h3 className="text-base font-bold text-slate-700">Nenhum plantio cadastrado</h3>
                             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                                Clique no botão "Novo Plantio" para registrar a semeadura de um talhão.
+                                {isAdmin ? 'Clique no botão "Novo Plantio" para registrar a semeadura de um talhão.' : 'Nenhum registro encontrado.'}
                             </p>
                         </div>
                     ) : (
@@ -285,22 +294,24 @@ export function PlantiosScreen({ navigation }) {
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                            <button
-                                                onClick={() => setModal({ visible: true, itemId: item.id })}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Pencil size={16} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Trash2 size={16} />
-                                                <span>Excluir</span>
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                                <button
+                                                    onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Pencil size={16} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    <span>Excluir</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -309,9 +320,10 @@ export function PlantiosScreen({ navigation }) {
                 </div>
 
                 {/* Modal Plantio */}
-                {modal.visible && (
+                {modal.visible && isAdmin && (
                     <ModalAddOrEditPlantio
                         itemId={modal.itemId}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModal({ visible: false, itemId: null })}
                     />
                 )}
@@ -322,7 +334,7 @@ export function PlantiosScreen({ navigation }) {
 }
 
 // Modal de Plantio
-function ModalAddOrEditPlantio({ itemId, onClose }) {
+function ModalAddOrEditPlantio({ itemId, effectiveUid, onClose }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [talhoesList, setTalhoesList] = useState([]);
@@ -338,7 +350,7 @@ function ModalAddOrEditPlantio({ itemId, onClose }) {
     const [observacoes, setObservacoes] = useState('');
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         // Fetch talhoes
@@ -375,7 +387,7 @@ function ModalAddOrEditPlantio({ itemId, onClose }) {
                 }
             })();
         }
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -386,7 +398,7 @@ function ModalAddOrEditPlantio({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -615,13 +627,14 @@ function ModalAddOrEditPlantio({ itemId, onClose }) {
 // =========================================================================
 
 export function ColheitasScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [colheitas, setColheitas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [modal, setModal] = useState({ visible: false, itemId: null, startScanner: false });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'colheitas'), orderBy('dataColheita', 'desc'));
@@ -633,7 +646,7 @@ export function ColheitasScreen({ navigation }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Estatísticas de Colheita
     const stats = useMemo(() => {
@@ -671,8 +684,9 @@ export function ColheitasScreen({ navigation }) {
     }, [colheitas, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este registro de colheita?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'colheitas', id));
@@ -709,24 +723,30 @@ export function ColheitasScreen({ navigation }) {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                            onClick={() => setModal({ visible: true, itemId: null, startScanner: true })}
-                            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-950/15"
-                            title="Escanear Romaneio por Câmera ou PDF usando a IA AgronomIA / Groq"
-                        >
-                            <ScanLine size={18} />
-                            <span>Ler Romaneio (IA)</span>
-                        </button>
+                    {isAdmin ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                                onClick={() => setModal({ visible: true, itemId: null, startScanner: true })}
+                                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-950/15"
+                                title="Escanear Romaneio por Câmera ou PDF usando a IA AgronomIA / Groq"
+                            >
+                                <ScanLine size={18} />
+                                <span>Ler Romaneio (IA)</span>
+                            </button>
 
-                        <button
-                            onClick={() => setModal({ visible: true, itemId: null, startScanner: false })}
-                            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
-                        >
-                            <PlusCircle size={18} />
-                            <span>Nova Colheita</span>
-                        </button>
-                    </div>
+                            <button
+                                onClick={() => setModal({ visible: true, itemId: null, startScanner: false })}
+                                className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                            >
+                                <PlusCircle size={18} />
+                                <span>Nova Colheita</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                            <span>👤 Visualização</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Metric Cards */}
@@ -749,28 +769,28 @@ export function ColheitasScreen({ navigation }) {
                                 <Package size={16} />
                             </div>
                         </div>
-                        <div className="text-2xl font-black text-slate-800">{formatNumero(stats.totalSacas, 0)} <span className="text-sm font-semibold text-slate-500">sacas</span></div>
-                        <div className="text-xs text-slate-500 mt-1">{(stats.totalSacas * 60 / 1000).toFixed(1)} toneladas colhidas</div>
+                        <div className="text-2xl font-black text-slate-800">{formatNumero(stats.totalSacas, 0)} <span className="text-sm font-semibold text-slate-500">sc</span></div>
+                        <div className="text-xs text-slate-500 mt-1">Sacas de grãos colhidas</div>
                     </div>
 
                     <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Área Colhida</span>
-                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Área Colhida Total</span>
+                            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
                                 <Tractor size={16} />
                             </div>
                         </div>
                         <div className="text-2xl font-black text-slate-800">{formatNumero(stats.totalArea)} <span className="text-sm font-semibold text-slate-500">ha</span></div>
-                        <div className="text-xs text-slate-500 mt-1">Talhões finalizados</div>
+                        <div className="text-xs text-slate-500 mt-1">Hectares concluídos</div>
                     </div>
                 </div>
 
-                {/* Search Bar */}
-                <div className="mb-6">
+                {/* Filter */}
+                <div className="flex items-center justify-between gap-3 mb-6">
                     <div className="relative w-full sm:w-80">
                         <input
                             type="text"
-                            placeholder="Buscar talhão, cultura, romaneio, placa..."
+                            placeholder="Buscar por cultura, talhão, romaneio..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-amber-500 shadow-sm"
@@ -788,20 +808,22 @@ export function ColheitasScreen({ navigation }) {
                         </div>
                     ) : filtered.length === 0 ? (
                         <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm">
-                            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-3">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
                                 <Tractor size={28} />
                             </div>
                             <h3 className="text-base font-bold text-slate-700">Nenhuma colheita registrada</h3>
                             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-4">
-                                Clique em "Ler Romaneio (IA)" para escanear tickets de pesagem por foto/PDF ou faça o cadastro manual.
+                                {isAdmin ? 'Lance manualmente ou use o Leitor de Romaneio com IA para importar os tickets de pesagem.' : 'Nenhum registro de colheita encontrado.'}
                             </p>
-                            <button
-                                onClick={() => setModal({ visible: true, itemId: null, startScanner: true })}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md"
-                            >
-                                <ScanLine size={16} />
-                                <span>Escanear Primeiro Romaneio com IA</span>
-                            </button>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setModal({ visible: true, itemId: null, startScanner: true })}
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                                >
+                                    <ScanLine size={16} />
+                                    <span>Escanear Primeiro Romaneio com IA</span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -885,22 +907,24 @@ export function ColheitasScreen({ navigation }) {
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                            <button
-                                                onClick={() => setModal({ visible: true, itemId: item.id, startScanner: false })}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Pencil size={16} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Trash2 size={16} />
-                                                <span>Excluir</span>
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                                <button
+                                                    onClick={() => setModal({ visible: true, itemId: item.id, startScanner: false })}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Pencil size={16} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    <span>Excluir</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -909,10 +933,11 @@ export function ColheitasScreen({ navigation }) {
                 </div>
 
                 {/* Modal Colheita com Scanner IA */}
-                {modal.visible && (
+                {modal.visible && isAdmin && (
                     <ModalAddOrEditColheita
                         itemId={modal.itemId}
                         startScanner={modal.startScanner}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModal({ visible: false, itemId: null, startScanner: false })}
                     />
                 )}
@@ -1113,7 +1138,7 @@ function LiveCameraModal({ onCapture, onClose }) {
 // =========================================================================
 // Modal de Adicionar / Editar Colheita com Leitor IA AgronomIA
 // =========================================================================
-function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
+function ModalAddOrEditColheita({ itemId, onClose, startScanner = false, effectiveUid }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [talhoesList, setTalhoesList] = useState([]);
@@ -1148,7 +1173,7 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
     const imageInputRef = useRef(null);
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         // Fetch talhoes
@@ -1188,7 +1213,7 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
                 }
             })();
         }
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     // Dispara processamento do arquivo ou imagem da câmera com Groq Vision
     const handleProcessRomaneio = async (fileOrBase64, fileName = '') => {
@@ -1297,7 +1322,7 @@ function ModalAddOrEditColheita({ itemId, onClose, startScanner = false }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {

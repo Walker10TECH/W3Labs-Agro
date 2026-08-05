@@ -18,13 +18,26 @@ import {
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { auth, db, signOut } from '../firebaseConfig';
 import FarmMapModal from '../components/FarmMapModal';
+import PropertyControlModal from '../components/PropertyControlModal';
 import AgronomiaChatbot from '../components/AgronomiaChatbot';
 import { getCurrentPosition, reverseGeocodeOSM, fetchOpenMeteoWeather } from '../services/locationService';
+import { usePropertyAuth } from '../context/PropertyContext';
+import { Crown, Building2, Shield, Settings, Users } from 'lucide-react-native';
 
 export default function Dashboard({ navigation }) {
+    const {
+        effectiveUid,
+        isAdmin,
+        isMember,
+        role,
+        propertyName,
+        propertyCode
+    } = usePropertyAuth();
+
     const [weather, setWeather] = useState({ temp: '--', desc: 'Buscando clima...', humidity: '--', wind: '--', rain: '--' });
     const [location, setLocation] = useState(null);
     const [showFarmMap, setShowFarmMap] = useState(false);
+    const [showPropertyModal, setShowPropertyModal] = useState(false);
     const [talhoesList, setTalhoesList] = useState([]);
     const userName = auth.currentUser?.displayName || "Produtor";
 
@@ -37,9 +50,9 @@ export default function Dashboard({ navigation }) {
         }
     };
 
-    // Carrega talhões para o visualizador de mapas
+    // Carrega talhões para o visualizador de mapas (baseado no effectiveUid do Admin/Propriedade)
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         (async () => {
             try {
@@ -49,7 +62,7 @@ export default function Dashboard({ navigation }) {
                 console.error("Erro ao carregar talhões no dashboard:", e);
             }
         })();
-    }, []);
+    }, [effectiveUid]);
 
     // Busca Clima e Localização via Open-Source APIs (OpenStreetMap + Open-Meteo)
     useEffect(() => {
@@ -113,8 +126,30 @@ export default function Dashboard({ navigation }) {
                             <div>
                                 <div className="text-xs font-semibold uppercase tracking-wider text-emerald-200">Painel Principal</div>
                                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-0.5">Olá, {userName} 👋</h1>
+                                <div className="flex items-center gap-2 flex-wrap mt-2">
+                                    <button
+                                        onClick={() => setShowPropertyModal(true)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition-all cursor-pointer backdrop-blur-md shadow-sm"
+                                        title="Clique para gerenciar a propriedade e membros da equipe"
+                                    >
+                                        <span>{isAdmin ? '👑' : '👤'}</span>
+                                        <span className="truncate max-w-[160px] sm:max-w-[240px]">{propertyName}</span>
+                                        <span className="text-[10px] text-emerald-200 uppercase tracking-wide">
+                                            • {isAdmin ? 'Administrador' : 'Membro (Visualização)'}
+                                        </span>
+                                        <Settings size={12} className="ml-0.5 opacity-80" />
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => setShowPropertyModal(true)}
+                                    className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold border border-white/10"
+                                    title="Propriedade & Equipe"
+                                >
+                                    <Users size={16} className="text-emerald-200" />
+                                    <span className="hidden sm:inline">Equipe</span>
+                                </button>
                                 <button 
                                     onClick={handleLogout} 
                                     className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all cursor-pointer flex items-center gap-2 text-sm font-medium"
@@ -209,6 +244,13 @@ export default function Dashboard({ navigation }) {
                     <FarmMapModal
                         talhoes={talhoesList}
                         onClose={() => setShowFarmMap(false)}
+                    />
+                )}
+
+                {/* Property & Team Control Modal */}
+                {showPropertyModal && (
+                    <PropertyControlModal
+                        onClose={() => setShowPropertyModal(false)}
                     />
                 )}
 

@@ -24,6 +24,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { usePropertyAuth } from '../context/PropertyContext';
 
 const parseMoeda = (val) => {
     if (typeof val === 'number') return val;
@@ -46,6 +47,7 @@ const formatDate = (dateVal) => {
 };
 
 export default function RevisoesScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [revisoes, setRevisoes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('todas'); // 'todas' | 'Agendada' | 'Em andamento' | 'Concluída'
@@ -53,7 +55,7 @@ export default function RevisoesScreen({ navigation }) {
     const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'revisoes'), orderBy('dataRevisao', 'desc'));
@@ -65,7 +67,7 @@ export default function RevisoesScreen({ navigation }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Estatísticas Rápidas
     const stats = useMemo(() => {
@@ -103,8 +105,9 @@ export default function RevisoesScreen({ navigation }) {
     }, [revisoes, activeTab, searchQuery]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir este registro de revisão?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'revisoes', id));
@@ -134,13 +137,19 @@ export default function RevisoesScreen({ navigation }) {
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => setModal({ visible: true, itemId: null })}
-                        className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-950/10"
-                    >
-                        <PlusCircle size={18} />
-                        <span>Nova Revisão</span>
-                    </button>
+                    {isAdmin ? (
+                        <button
+                            onClick={() => setModal({ visible: true, itemId: null })}
+                            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-blue-950/10"
+                        >
+                            <PlusCircle size={18} />
+                            <span>Nova Revisão</span>
+                        </button>
+                    ) : (
+                        <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                            <span>👤 Visualização</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Metric Summary Cards */}
@@ -242,7 +251,7 @@ export default function RevisoesScreen({ navigation }) {
                             </div>
                             <h3 className="text-base font-bold text-slate-700">Nenhuma revisão cadastrada</h3>
                             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                                Clique no botão "Nova Revisão" para registrar a manutenção preventiva ou corretiva de um maquinário.
+                                {isAdmin ? 'Clique no botão "Nova Revisão" para registrar a manutenção preventiva ou corretiva de um maquinário.' : 'Nenhuma revisão cadastrada encontrada.'}
                             </p>
                         </div>
                     ) : (
@@ -327,22 +336,24 @@ export default function RevisoesScreen({ navigation }) {
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
-                                            <button
-                                                onClick={() => setModal({ visible: true, itemId: item.id })}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Pencil size={16} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Trash2 size={16} />
-                                                <span>Excluir</span>
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+                                                <button
+                                                    onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Pencil size={16} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    <span>Excluir</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -351,9 +362,10 @@ export default function RevisoesScreen({ navigation }) {
                 </div>
 
                 {/* Modal Revisão */}
-                {modal.visible && (
+                {modal.visible && isAdmin && (
                     <ModalAddOrEditRevisao
                         itemId={modal.itemId}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModal({ visible: false, itemId: null })}
                     />
                 )}
@@ -364,7 +376,7 @@ export default function RevisoesScreen({ navigation }) {
 }
 
 // Modal de Revisão
-function ModalAddOrEditRevisao({ itemId, onClose }) {
+function ModalAddOrEditRevisao({ itemId, onClose, effectiveUid }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [maquinasList, setMaquinasList] = useState([]);
@@ -388,7 +400,7 @@ function ModalAddOrEditRevisao({ itemId, onClose }) {
     const [tempStockId, setTempStockId] = useState('');
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         (async () => {
@@ -427,7 +439,7 @@ function ModalAddOrEditRevisao({ itemId, onClose }) {
                 }
             })();
         }
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     // Cálculo do total geral
     const valorTotalCalculado = useMemo(() => {
@@ -472,7 +484,7 @@ function ModalAddOrEditRevisao({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {

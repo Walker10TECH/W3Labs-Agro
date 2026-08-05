@@ -4,10 +4,13 @@ import { collection, doc, setDoc, getDocs, limit, orderBy, query } from 'firebas
 
 const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY || '';
 
-// Inicialização oficial do Groq SDK
+// Inicialização oficial do Groq SDK com suporte às versões e ferramentas mais recentes
 export const groq = new Groq({
     apiKey: apiKey,
     dangerouslyAllowBrowser: true,
+    defaultHeaders: {
+        'Groq-Model-Version': 'latest',
+    },
 });
 
 export const getModels = async () => {
@@ -24,9 +27,43 @@ getModels().then((models) => {
 });
 
 /**
- * Catálogo exclusivo com os modelos mais precisos da META e OPENAI no GroqCloud
+ * Catálogo exclusivo com os modelos mais precisos da Groq, Meta e OpenAI no GroqCloud
  */
 export const GROQ_MODELS = [
+    // ⚡ GROQ COMPOUND (SISTEMAS OFICIAIS COM BUSCA WEB & VISITA A SITES EM TEMPO REAL)
+    {
+        id: 'groq/compound',
+        name: 'Groq Compound (Flagship Web & Visita)',
+        category: 'groq',
+        categoryLabel: '⚡ Groq Compound (Pesquisa & Visita Web)',
+        speed: '~350 tps',
+        contextWindow: '128.000 tokens',
+        maxCompletion: '8.192 tokens',
+        desc: 'Sistema flagship da Groq com raciocínio profundo, pesquisa web nativa em tempo real (Tavily), visita automática a URLs e integração com ferramentas da fazenda.',
+        badge: 'Groq Compound Flagship',
+        isFeatured: true,
+        supportsWebSearch: true,
+        supportsWebsiteVisit: true,
+        supportsCustomTools: true,
+        supportsVision: false,
+    },
+    {
+        id: 'groq/compound-mini',
+        name: 'Groq Compound Mini Turbo',
+        category: 'groq',
+        categoryLabel: '⚡ Groq Compound (Pesquisa & Visita Web)',
+        speed: '~650 tps',
+        contextWindow: '128.000 tokens',
+        maxCompletion: '8.192 tokens',
+        desc: 'Versão ultrarrápida do Groq Compound. Ideal para buscas ágeis na web, cotações em tempo real e verificação de sites agronômicos.',
+        badge: 'Groq Compound Mini',
+        isFeatured: true,
+        supportsWebSearch: true,
+        supportsWebsiteVisit: true,
+        supportsCustomTools: true,
+        supportsVision: false,
+    },
+
     // 🧠 META LLAMA - RACIOCÍNIO PROFUNDO & BANCO DA FAZENDA
     {
         id: 'llama-3.3-70b-versatile',
@@ -40,6 +77,7 @@ export const GROQ_MODELS = [
         badge: 'Meta Flagship 70B',
         isFeatured: true,
         supportsWebSearch: false,
+        supportsWebsiteVisit: false,
         supportsVision: false,
         supportsCustomTools: true,
     },
@@ -55,6 +93,7 @@ export const GROQ_MODELS = [
         badge: 'Meta Instant 8B',
         isFeatured: true,
         supportsWebSearch: false,
+        supportsWebsiteVisit: false,
         supportsVision: false,
         supportsCustomTools: true,
     },
@@ -70,6 +109,7 @@ export const GROQ_MODELS = [
         badge: 'Meta 70B',
         isFeatured: false,
         supportsWebSearch: false,
+        supportsWebsiteVisit: false,
         supportsVision: false,
         supportsCustomTools: true,
     },
@@ -87,6 +127,7 @@ export const GROQ_MODELS = [
         badge: 'OpenAI 120B',
         isFeatured: true,
         supportsWebSearch: true,
+        supportsWebsiteVisit: false,
         supportsVision: false,
         supportsCustomTools: false,
     },
@@ -102,6 +143,7 @@ export const GROQ_MODELS = [
         badge: 'OpenAI 20B Turbo',
         isFeatured: true,
         supportsWebSearch: false,
+        supportsWebsiteVisit: false,
         supportsVision: false,
         supportsCustomTools: false,
     },
@@ -139,7 +181,7 @@ export const GROQ_MODELS = [
  * Redimensiona e comprime uma imagem (File, Blob ou DataURL) para JPEG otimizado
  * Evita o erro HTTP 413 (Request Entity Too Large) na API da Groq
  */
-export const compressImageFile = (fileOrDataUrl, { maxWidth = 800, maxHeight = 800, quality = 0.65 } = {}) => {
+export const compressImageFile = (fileOrDataUrl, { maxWidth = 640, maxHeight = 640, quality = 0.5 } = {}) => {
     return new Promise((resolve, reject) => {
         if (typeof window === 'undefined') return resolve(fileOrDataUrl);
 
@@ -168,14 +210,28 @@ export const compressImageFile = (fileOrDataUrl, { maxWidth = 800, maxHeight = 8
 
             let compressedBase64 = canvas.toDataURL('image/jpeg', quality);
 
-            // Se ainda assim ultrapassar 200KB, reduz dimensões para 600px e qualidade 0.5
-            if (compressedBase64.length > 250000) {
+            // Passe 2: se ainda > ~75KB, reduz para 480px e qualidade 0.4
+            if (compressedBase64.length > 100000) {
                 const c2 = document.createElement('canvas');
-                c2.width = Math.round(width * 0.75);
-                c2.height = Math.round(height * 0.75);
+                c2.width = Math.min(width, 480);
+                c2.height = Math.round((height / width) * c2.width);
                 const ctx2 = c2.getContext('2d');
+                ctx2.fillStyle = '#FFFFFF';
+                ctx2.fillRect(0, 0, c2.width, c2.height);
                 ctx2.drawImage(img, 0, 0, c2.width, c2.height);
-                compressedBase64 = c2.toDataURL('image/jpeg', 0.5);
+                compressedBase64 = c2.toDataURL('image/jpeg', 0.4);
+
+                // Passe 3: se ainda > ~55KB, reduz para 320px e qualidade 0.3
+                if (compressedBase64.length > 75000) {
+                    const c3 = document.createElement('canvas');
+                    c3.width = Math.min(c2.width, 320);
+                    c3.height = Math.round((c2.height / c2.width) * c3.width);
+                    const ctx3 = c3.getContext('2d');
+                    ctx3.fillStyle = '#FFFFFF';
+                    ctx3.fillRect(0, 0, c3.width, c3.height);
+                    ctx3.drawImage(img, 0, 0, c3.width, c3.height);
+                    compressedBase64 = c3.toDataURL('image/jpeg', 0.3);
+                }
             }
 
             resolve(compressedBase64);
@@ -196,49 +252,292 @@ export const compressImageFile = (fileOrDataUrl, { maxWidth = 800, maxHeight = 8
 };
 
 /**
- * Presets de pesquisa web com filtros de domínio agrícolas
+ * Âmbitos de Pesquisa Web
+ */
+export const SEARCH_SCOPES = {
+    NACIONAL: {
+        id: 'nacional',
+        label: 'Nacional (Brasil)',
+        shortLabel: 'Nacional',
+        flag: '🇧🇷',
+        badge: '🇧🇷 Brasil',
+        desc: 'Portais nacionais: CEPEA/ESALQ, B3, CONAB, MAPA, Notícias Agrícolas, Canal Rural',
+        country: 'brazil',
+    },
+    REGIONAL: {
+        id: 'regional',
+        label: 'Regional (Por Estado/Polo)',
+        shortLabel: 'Regional',
+        flag: '📍',
+        badge: '📍 Regional',
+        desc: 'Foco no seu Estado, Cooperativas locais e Institutos Regionais (IMEA, DERAL, EMATER, etc.)',
+        country: 'brazil',
+    },
+    GLOBAL: {
+        id: 'global',
+        label: 'Global (Internacional)',
+        shortLabel: 'Global',
+        flag: '🌐',
+        badge: '🌐 Global',
+        desc: 'Internet mundial aberta: Chicago CBOT, USDA, relatórios e mercados globais',
+        country: null,
+    },
+};
+
+/**
+ * Perfis e Fontes dos Principais Polos Agrícolas Brasileiros
+ */
+export const BRAZILIAN_AGRO_REGIONS = {
+    'PR': {
+        uf: 'PR',
+        name: 'Paraná',
+        region: 'Sul',
+        institutes: 'DERAL/SEAB-PR, FAEP, IDR-Paraná, Cooperativas (Coamo, C.Vale, Cocamar, Lar, Copacol, Agrária)',
+        hubs: 'Cascavel, Londrina, Maringá, Ponta Grossa, Guarapuava, Toledo, Pato Branco',
+        domains: ['seab.pr.gov.br', 'agricultura.pr.gov.br', 'sistemafaep.org.br', 'idrparana.pr.gov.br', 'coamo.com.br', 'cvale.com.br', 'cocamar.com.br', 'lar.ind.br', 'copacol.com.br', 'noticiasagricolas.com.br', 'cepea.esalq.usp.br'],
+        searchKeywords: ['DERAL PR', 'SEAB PR', 'Coamo', 'preço soja Paraná', 'milho safrinha PR']
+    },
+    'MT': {
+        uf: 'MT',
+        name: 'Mato Grosso',
+        region: 'Centro-Oeste',
+        institutes: 'IMEA, Aprosoja MT, Sistema FAMATO, SEDEC-MT',
+        hubs: 'Sorriso, Lucas do Rio Verde, Rondonópolis, Sinop, Campo Novo do Parecis, Nova Mutum, Primavera do Leste',
+        domains: ['imea.com.br', 'aprosoja.com.br', 'sistemafamato.org.br', 'sedec.mt.gov.br', 'noticiasagricolas.com.br', 'cepea.esalq.usp.br', 'globorural.globo.com'],
+        searchKeywords: ['IMEA MT', 'Aprosoja MT', 'cotação soja Sorriso MT', 'frete MT', 'milho MT']
+    },
+    'RS': {
+        uf: 'RS',
+        name: 'Rio Grande do Sul',
+        region: 'Sul',
+        institutes: 'Emater-RS, Sistema FARSUL, Cotrijal, Cotrisoja, Federarroz, CCGL',
+        hubs: 'Passo Fundo, Cruz Alta, Santa Maria, Pelotas, Ijuí, Santo Ângelo, Não-Me-Toque',
+        domains: ['emater.tche.br', 'farsul.org.br', 'cotrijal.com.br', 'federarroz.com.br', 'noticiasagricolas.com.br', 'cepea.esalq.usp.br'],
+        searchKeywords: ['Emater RS', 'Farsul', 'preço soja RS', 'Cotrijal', 'arroz RS']
+    },
+    'GO': {
+        uf: 'GO',
+        name: 'Goiás',
+        region: 'Centro-Oeste',
+        institutes: 'Sistema FAEG/SENAR, Aprosoja GO, Agrodefesa, COMIGO, Caramuru',
+        hubs: 'Rio Verde, Jataí, Cristalina, Itumbiara, Montividiu, Mineiros, Catalão',
+        domains: ['sistemafaeg.com.br', 'aprosojago.com.br', 'agrodefesa.go.gov.br', 'comigo.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['FAEG Goiás', 'Aprosoja GO', 'COMIGO Rio Verde', 'cotação soja Goiás']
+    },
+    'MS': {
+        uf: 'MS',
+        name: 'Mato Grosso do Sul',
+        region: 'Centro-Oeste',
+        institutes: 'Sistema Famasul, Aprosoja MS, Coamo MS, Copasul',
+        hubs: 'Dourados, Maracaju, São Gabriel do Oeste, Sidrolândia, Chapadão do Sul, Naviraí',
+        domains: ['famasul.com.br', 'aprosojams.org.br', 'copasul.com.br', 'noticiasagricolas.com.br', 'cepea.esalq.usp.br'],
+        searchKeywords: ['Famasul MS', 'Aprosoja MS', 'soja Dourados MS', 'milho safrinha MS']
+    },
+    'MG': {
+        uf: 'MG',
+        name: 'Minas Gerais',
+        region: 'Sudeste',
+        institutes: 'Sistema FAEMG, Emater-MG, EPAMIG, Cooxupé, Cooperativa Agropecuária do Alto Paranaíba',
+        hubs: 'Patos de Minas, Uberlândia, Unaí, Paracatu, Machado, Guaxupé, Araguari',
+        domains: ['sistemafaemg.org.br', 'emater.mg.gov.br', 'epamig.br', 'cooxupe.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['FAEMG', 'Emater MG', 'café Cooxupé', 'grãos Triângulo Mineiro', 'soja Unaí']
+    },
+    'BA': {
+        uf: 'BA',
+        name: 'Bahia / MATOPIBA',
+        region: 'Nordeste',
+        institutes: 'AIBA, ABAPA, Fundação Bahia, Aprosoja BA',
+        hubs: 'Luís Eduardo Magalhães (LEM), Barreiras, São Desidério, Correntina, Formosa do Rio Preto',
+        domains: ['aiba.org.br', 'abapa.com.br', 'fundacaobahia.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['AIBA LEM', 'ABAPA algodão', 'soja Oeste da Bahia', 'MATOPIBA']
+    },
+    'SP': {
+        uf: 'SP',
+        name: 'São Paulo',
+        region: 'Sudeste',
+        institutes: 'IEA-SP, FAESP/SENAR, CATI, CEPEA/ESALQ USP, Coopercitrus',
+        hubs: 'Ribeirão Preto, Piracicaba, Assis, Barretos, Araraquara, Franca, Itapetininga',
+        domains: ['ieaig.sp.gov.br', 'faespsenar.com.br', 'cati.sp.gov.br', 'cepea.esalq.usp.br', 'coopercitrus.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['IEA SP', 'CEPEA ESALQ SP', 'cana SP', 'soja Assis SP', 'milho SP']
+    },
+    'SC': {
+        uf: 'SC',
+        name: 'Santa Catarina',
+        region: 'Sul',
+        institutes: 'Epagri, Sistema FAESC, Cooperalfa, Aurora Coop',
+        hubs: 'Chapecó, Concórdia, Campos Novos, Xanxerê, Joaçaba',
+        domains: ['epagri.sc.gov.br', 'faesc.com.br', 'cooperalfa.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['Epagri SC', 'FAESC', 'grãos Chapecó', 'milho Campos Novos']
+    },
+    'TO': {
+        uf: 'TO',
+        name: 'Tocantins / MATOPIBA',
+        region: 'Norte',
+        institutes: 'FAET, Aprosoja TO, Seagro TO',
+        hubs: 'Pedro Afonso, Campos Lindos, Gurupi, Porto Nacional',
+        domains: ['faet.com.br', 'seagro.to.gov.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['Aprosoja TO', 'soja Tocantins', 'MATOPIBA Pedro Afonso']
+    },
+    'MA': {
+        uf: 'MA',
+        name: 'Maranhão / MATOPIBA',
+        region: 'Nordeste',
+        institutes: 'FAEMA, FAPCEN, Aprosoja MA',
+        hubs: 'Balsas, Tasso Fragoso, Chapadinha',
+        domains: ['faema.org.br', 'fapcen.org.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['FAPCEN Balsas', 'soja Maranhão', 'MATOPIBA']
+    },
+    'PI': {
+        uf: 'PI',
+        name: 'Piauí / MATOPIBA',
+        region: 'Nordeste',
+        institutes: 'FAEPI, Aprosoja PI',
+        hubs: 'Uruçuí, Bom Jesus, Baixa Grande do Ribeiro',
+        domains: ['faepi.org.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['Aprosoja PI', 'soja Uruçuí', 'grãos Piauí']
+    },
+    'RO': {
+        uf: 'RO',
+        name: 'Rondônia',
+        region: 'Norte',
+        institutes: 'FAPERON, Emater-RO, Aprosoja RO',
+        hubs: 'Vilhena, Cerejeiras, Ariquemes, Ji-Paraná',
+        domains: ['faperon.com.br', 'emater-ro.com.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['Aprosoja RO', 'soja Vilhena', 'grãos Rondônia']
+    },
+    'PA': {
+        uf: 'PA',
+        name: 'Pará',
+        region: 'Norte',
+        institutes: 'FAEPA, Emater-PA, Aprosoja PA',
+        hubs: 'Santarém, Paragominas, Dom Eliseu, Santana do Araguaia',
+        domains: ['faepa.com.br', 'emater.pa.gov.br', 'noticiasagricolas.com.br'],
+        searchKeywords: ['Aprosoja PA', 'soja Paragominas', 'grãos Santarém']
+    },
+};
+
+/**
+ * Presets de pesquisa web com filtros temáticos agrícolas
  */
 export const WEB_SEARCH_PRESETS = [
     {
         id: 'all',
-        label: 'Busca Global',
-        icon: 'Globe',
-        desc: 'Pesquisa livre em toda a internet',
-        settings: {
-            country: 'brazil',
-        },
+        label: 'Busca Ampla',
+        shortLabel: 'Tudo',
+        icon: '🌐',
+        desc: 'Pesquisa livre com priorização nacional ou regional conforme o âmbito selecionado',
+        domains: [],
     },
     {
         id: 'cotacoes',
         label: 'Cotações & Mercado',
-        icon: 'TrendingUp',
-        desc: 'Notícias Agrícolas, CEPEA/ESALQ, Canal Rural, B3, SAFRAS & Mercado',
-        settings: {
-            country: 'brazil',
-            include_domains: ['noticiasagricolas.com.br', 'cepea.esalq.usp.br', 'canalrural.com.br', 'globorural.globo.com', 'b3.com.br'],
-        },
+        shortLabel: 'Cotações',
+        icon: '📈',
+        desc: 'Notícias Agrícolas, CEPEA/ESALQ, Canal Rural, B3, SAFRAS & Mercado e Agrolink',
+        domains: ['noticiasagricolas.com.br', 'cepea.esalq.usp.br', 'canalrural.com.br', 'globorural.globo.com', 'b3.com.br', 'agrolink.com.br', 'safras.com.br'],
     },
     {
         id: 'embrapa',
         label: 'Embrapa & Defensivos',
-        icon: 'ShieldCheck',
-        desc: 'Bases científicas Embrapa, Agrofit, MAPA e universidades agronômicas',
-        settings: {
-            country: 'brazil',
-            include_domains: ['embrapa.br', 'gov.br', 'agrofit.agricultura.gov.br', '*.usp.br', '*.ufv.br', '*.ufla.br'],
-        },
+        shortLabel: 'Embrapa / Bula',
+        icon: '🛡️',
+        desc: 'Bases científicas Embrapa, Agrofit, MAPA, CONAB e universidades agronômicas (USP, UFV, UFLA, UNESP)',
+        domains: ['embrapa.br', 'gov.br', 'agrofit.agricultura.gov.br', 'conab.gov.br', '*.usp.br', '*.ufv.br', '*.ufla.br', '*.unesp.br', '*.ufu.br'],
     },
     {
         id: 'clima',
         label: 'Clima & Previsão',
-        icon: 'CloudRain',
-        desc: 'INMET, CPTEC/INPE, Climatempo e radares meteorológicos',
-        settings: {
-            country: 'brazil',
-            include_domains: ['inmet.gov.br', 'cptec.inpe.br', 'climatempo.com.br', 'tempo.com'],
-        },
+        shortLabel: 'Clima & Radares',
+        icon: '🌦️',
+        desc: 'INMET, CPTEC/INPE, Climatempo, Tempo.com e radares meteorológicos',
+        domains: ['inmet.gov.br', 'cptec.inpe.br', 'climatempo.com.br', 'tempo.com'],
+    },
+    {
+        id: 'cooperativas',
+        label: 'Cooperativas & Institutos',
+        shortLabel: 'Cooperativas / Órgãos',
+        icon: '🏛️',
+        desc: 'Portais de cooperativas (Coamo, C.Vale, Cocamar, Cotrijal, COMIGO, Cooxupé) e institutos (IMEA, DERAL, EMATER, AIBA)',
+        domains: ['coamo.com.br', 'cvale.com.br', 'cocamar.com.br', 'cotrijal.com.br', 'comigo.com.br', 'cooxupe.com.br', 'seab.pr.gov.br', 'imea.com.br', 'aiba.org.br', 'emater.tche.br'],
     },
 ];
+
+/**
+ * Construtor inteligente de Search Settings para a GroqCloud (Tavily Search)
+ * Suporta filtragem por país (country: "brazil"), inclusão/exclusão de domínios com wildcards
+ */
+export const buildSearchSettings = ({
+    scope = 'nacional', // 'nacional' | 'regional' | 'global'
+    selectedState = 'AUTO', // 'PR' | 'MT' | 'RS' | etc. ou 'AUTO'
+    preset = 'all', // 'all' | 'cotacoes' | 'embrapa' | 'clima' | 'cooperativas'
+    customDomains = '',
+    excludeDomains = '',
+    location = null,
+} = {}) => {
+    // 1. Escopo Global: sem restrição de país
+    if (scope === 'global') {
+        const settings = {};
+        if (customDomains.trim()) {
+            settings.include_domains = customDomains.split(',').map(d => d.trim()).filter(Boolean);
+        }
+        if (excludeDomains.trim()) {
+            settings.exclude_domains = excludeDomains.split(',').map(d => d.trim()).filter(Boolean);
+        }
+        return Object.keys(settings).length > 0 ? settings : undefined;
+    }
+
+    // 2. Escopos Nacional e Regional: priorizam country = 'brazil'
+    const settings = {
+        country: 'brazil',
+    };
+
+    const includeSet = new Set();
+    const excludeSet = new Set(['wikipedia.org', '*.pinterest.com']); // Exclusões padrão para focar em dados agronômicos profissionais
+
+    // Aplica domínios do preset selecionado
+    const presetObj = WEB_SEARCH_PRESETS.find(p => p.id === preset);
+    if (presetObj && presetObj.domains && presetObj.domains.length > 0) {
+        presetObj.domains.forEach(d => includeSet.add(d));
+    }
+
+    // Se for âmbito Regional, integra os domínios do estado
+    if (scope === 'regional') {
+        let stateCode = selectedState;
+        if (stateCode === 'AUTO' && location?.state) {
+            // Tenta mapear nome do estado para a sigla UF
+            const stateEntry = Object.entries(BRAZILIAN_AGRO_REGIONS).find(([uf, data]) =>
+                location.state.toLowerCase().includes(data.name.toLowerCase()) ||
+                location.state.toUpperCase().includes(uf)
+            );
+            if (stateEntry) {
+                stateCode = stateEntry[0];
+            }
+        }
+
+        if (stateCode && stateCode !== 'AUTO' && BRAZILIAN_AGRO_REGIONS[stateCode]) {
+            const regionData = BRAZILIAN_AGRO_REGIONS[stateCode];
+            regionData.domains.forEach(d => includeSet.add(d));
+        }
+    }
+
+    // Domínios adicionais personalizados do usuário
+    if (customDomains.trim()) {
+        customDomains.split(',').map(d => d.trim()).filter(Boolean).forEach(d => includeSet.add(d));
+    }
+
+    if (excludeDomains.trim()) {
+        excludeDomains.split(',').map(d => d.trim()).filter(Boolean).forEach(d => excludeSet.add(d));
+    }
+
+    if (includeSet.size > 0) {
+        settings.include_domains = Array.from(includeSet);
+    }
+    if (excludeSet.size > 0) {
+        settings.exclude_domains = Array.from(excludeSet);
+    }
+
+    return settings;
+};
 
 /**
  * Ferramentas do banco de dados da fazenda (Firebase Firestore)
@@ -967,11 +1266,35 @@ class UnifiedGroqClient {
             return await groq.chat.completions.create(payload);
         } catch (error) {
             const errMsg = error.message || '';
+            const statusCode = error.status || error.statusCode || 0;
 
-            // Se o erro foi por causa de ferramentas não suportadas, tenta novamente sem tools
-            if (payload.tools && (errMsg.includes('tool') || errMsg.includes('tools') || errMsg.includes('400'))) {
+            // 413: payload muito grande — não adianta retentar com o mesmo conteúdo
+            if (statusCode === 413 || errMsg.includes('413') || errMsg.toLowerCase().includes('too large') || errMsg.toLowerCase().includes('request_too_large')) {
+                throw Object.assign(error, {
+                    friendlyMessage: '⚠️ Mensagem muito longa ou imagem muito grande para o modelo selecionado. Tente reduzir o histórico, compactar a imagem ou usar um modelo com contexto maior.'
+                });
+            }
+
+            // 400: Se o erro foi especificamente por causa de ferramentas não suportadas, tenta sem tools
+            if (payload.tools && (errMsg.toLowerCase().includes('tool') || errMsg.toLowerCase().includes('function'))) {
                 delete payload.tools;
                 delete payload.tool_choice;
+                try {
+                    return await groq.chat.completions.create(payload);
+                } catch (retryError) {
+                    const retryStatus = retryError.status || retryError.statusCode || 0;
+                    if (retryStatus === 413 || (retryError.message || '').toLowerCase().includes('too large')) {
+                        throw Object.assign(retryError, {
+                            friendlyMessage: '⚠️ Payload ainda muito grande após remover ferramentas. Reduza o histórico de mensagens ou o tamanho da imagem.'
+                        });
+                    }
+                    throw retryError;
+                }
+            }
+
+            // 400: Se o erro foi especificamente por causa de search_settings não suportado, remove e tenta
+            if (payload.search_settings && (errMsg.toLowerCase().includes('search_settings') || errMsg.toLowerCase().includes('search'))) {
+                delete payload.search_settings;
                 return await groq.chat.completions.create(payload);
             }
 

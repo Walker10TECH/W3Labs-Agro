@@ -118,8 +118,18 @@ const Icons = {
   ),
 };
 
+import {
+  checkAndAcceptPendingInvite,
+  createAdminProperty,
+  joinPropertyByCode,
+  lookupPropertyByCode
+} from '../services/propertyService';
+
 export default function LoginScreen() {
   const [activeTab, setActiveTab] = useState('login'); // 'login' | 'register' | 'forgot'
+  const [accountRole, setAccountRole] = useState('admin'); // 'admin' | 'membro'
+  const [farmName, setFarmName] = useState('');
+  const [propertyCode, setPropertyCode] = useState('');
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -159,11 +169,41 @@ export default function LoginScreen() {
       return;
     }
 
+    // Se for membro e preencheu código, valida antes
+    if (accountRole === 'membro' && propertyCode.trim()) {
+      const propExists = await lookupPropertyByCode(propertyCode.trim());
+      if (!propExists) {
+        showFeedbackMessage('error', 'O código de propriedade informado não foi encontrado. Verifique com seu Administrador.');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await updateProfile(userCredential.user, { displayName: name.trim() });
-      showFeedbackMessage('success', `Conta criada com sucesso! Bem-vindo(a), ${name.trim()}!`);
+
+      // 1. Verifica se havia convite pré-aprovado por e-mail registrado pelo Administrador
+      const acceptedInvite = await checkAndAcceptPendingInvite(userCredential.user.uid, email.trim(), name.trim());
+
+      if (acceptedInvite) {
+        showFeedbackMessage('success', `Conta criada com sucesso! Você foi vinculado automaticamente à fazenda "${acceptedInvite.propriedadeNome}"!`);
+      } else if (accountRole === 'admin') {
+        await createAdminProperty(userCredential.user.uid, {
+          nome: name.trim(),
+          email: email.trim(),
+          propriedadeNome: farmName.trim() || 'Minha Fazenda',
+        });
+        showFeedbackMessage('success', `Conta de Administrador criada com sucesso! Bem-vindo(a), ${name.trim()}!`);
+      } else {
+        if (propertyCode.trim()) {
+          await joinPropertyByCode(userCredential.user.uid, {
+            nome: name.trim(),
+            email: email.trim(),
+          }, propertyCode.trim());
+        }
+        showFeedbackMessage('success', `Conta de Membro criada com sucesso! Bem-vindo(a), ${name.trim()}!`);
+      }
       
       setPassword('');
       setConfirmPassword('');
@@ -392,6 +432,52 @@ export default function LoginScreen() {
             } 
             className="space-y-3.5 sm:space-y-4"
           >
+            {/* Seleção de Papel / Perfil (Apenas no Cadastro) */}
+            {activeTab === 'register' && (
+              <div className="space-y-2 mb-2">
+                <label className="block text-[10px] sm:text-xs font-black text-black uppercase tracking-wider">
+                  Tipo de Conta / Perfil
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAccountRole('admin')}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col ${
+                      accountRole === 'admin'
+                        ? 'border-lime-500 bg-lime-50/80 text-black shadow-sm'
+                        : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-black text-xs sm:text-sm text-black">
+                      <span>👑</span>
+                      <span>Administrador</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-semibold mt-0.5">
+                      Gestor • Controle Total
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAccountRole('membro')}
+                    className={`p-2.5 sm:p-3 rounded-2xl border-2 text-left transition-all cursor-pointer flex flex-col ${
+                      accountRole === 'membro'
+                        ? 'border-lime-500 bg-lime-50/80 text-black shadow-sm'
+                        : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-black text-xs sm:text-sm text-black">
+                      <span>👤</span>
+                      <span>Membro</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500 font-semibold mt-0.5">
+                      Operador • Visualização
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Campo: Nome Completo (Apenas no Cadastro) */}
             {activeTab === 'register' && (
               <div className="space-y-1">
@@ -413,6 +499,57 @@ export default function LoginScreen() {
                     required
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Campo: Nome da Fazenda (Apenas Admin no Cadastro) */}
+            {activeTab === 'register' && accountRole === 'admin' && (
+              <div className="space-y-1">
+                <label className="block text-[10px] sm:text-xs font-black text-black uppercase tracking-wider">
+                  Nome da Propriedade / Fazenda
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3.5 text-zinc-500 pointer-events-none flex items-center text-sm">
+                    🌾
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full bg-zinc-50 border-2 border-zinc-200 rounded-2xl pl-11 pr-4 py-3 sm:py-3.5 text-black text-sm sm:text-base placeholder-zinc-400 font-medium focus:bg-white focus:border-lime-500 focus:ring-4 focus:ring-lime-400/20 transition-all outline-none"
+                    placeholder="Ex: Fazenda Santa Maria"
+                    value={farmName}
+                    onChange={(e) => setFarmName(e.target.value)}
+                    autoCapitalize="words"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Campo: Código da Propriedade (Apenas Membro no Cadastro) */}
+            {activeTab === 'register' && accountRole === 'membro' && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] sm:text-xs font-black text-black uppercase tracking-wider">
+                    Código da Propriedade (Convite)
+                  </label>
+                  <span className="text-[10px] font-bold text-zinc-500">Ex: AGRO-8492</span>
+                </div>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3.5 text-zinc-500 pointer-events-none flex items-center text-sm font-mono">
+                    🔑
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full bg-zinc-50 border-2 border-zinc-200 rounded-2xl pl-11 pr-4 py-3 sm:py-3.5 text-black text-sm sm:text-base placeholder-zinc-400 font-mono uppercase font-bold focus:bg-white focus:border-lime-500 focus:ring-4 focus:ring-lime-400/20 transition-all outline-none"
+                    placeholder="AGRO-XXXX"
+                    value={propertyCode}
+                    onChange={(e) => setPropertyCode(e.target.value.toUpperCase())}
+                    autoCapitalize="characters"
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 font-medium">
+                  Insira o código fornecido pelo Administrador da fazenda para ter acesso aos dados.
+                </p>
               </div>
             )}
 

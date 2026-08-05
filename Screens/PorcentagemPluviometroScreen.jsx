@@ -36,6 +36,7 @@ import {
 } from 'firebase/firestore';
 import { Chart } from 'react-google-charts';
 import { auth, db } from '../firebaseConfig';
+import { usePropertyAuth } from '../context/PropertyContext';
 import { analyzePluviometroFile } from '../services/agroDocumentAIService';
 import { fetchRainHistory, fetchRainForSpecificDate } from '../services/weatherService';
 import { getCurrentPosition, reverseGeocodeOSM, searchLocationOSM } from '../services/locationService';
@@ -65,12 +66,13 @@ const formatDate = (dateVal) => {
 // =========================================================================
 
 export function PorcentagemListaScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modal, setModal] = useState({ visible: false, itemId: null });
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'porcentagens'), orderBy('dataAtualizacao', 'desc'));
@@ -82,7 +84,7 @@ export function PorcentagemListaScreen({ navigation }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Dados para o Gráfico de Barras do Google Charts
     const chartData = useMemo(() => {
@@ -113,13 +115,19 @@ export function PorcentagemListaScreen({ navigation }) {
                     </div>
 
                     <div className="screen-header-actions flex items-center gap-2">
-                        <button
-                            onClick={() => setModal({ visible: true, itemId: null })}
-                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
-                        >
-                            <PlusCircle size={18} />
-                            <span>Nova Atividade</span>
-                        </button>
+                        {isAdmin ? (
+                            <button
+                                onClick={() => setModal({ visible: true, itemId: null })}
+                                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-950/10"
+                            >
+                                <PlusCircle size={18} />
+                                <span>Nova Atividade</span>
+                            </button>
+                        ) : (
+                            <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                                <span>👤 Visualização</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -160,7 +168,7 @@ export function PorcentagemListaScreen({ navigation }) {
                             </div>
                             <h3 className="text-base font-bold text-slate-700">Nenhuma atividade cadastrada</h3>
                             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                                Toque no botão "Nova Atividade" para acompanhar o progresso das operações da fazenda.
+                                {isAdmin ? 'Toque no botão "Nova Atividade" para acompanhar o progresso das operações da fazenda.' : 'Nenhuma atividade registrada.'}
                             </p>
                         </div>
                     ) : (
@@ -171,8 +179,10 @@ export function PorcentagemListaScreen({ navigation }) {
                                 return (
                                     <div
                                         key={item.id}
-                                        onClick={() => setModal({ visible: true, itemId: item.id })}
-                                        className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer flex flex-col justify-between group"
+                                        onClick={() => isAdmin && setModal({ visible: true, itemId: item.id })}
+                                        className={`bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm transition-all flex flex-col justify-between group ${
+                                            isAdmin ? 'hover:shadow-md hover:border-emerald-300 cursor-pointer' : ''
+                                        }`}
                                     >
                                         <div>
                                             <div className="flex items-start justify-between gap-3 mb-3">
@@ -187,7 +197,7 @@ export function PorcentagemListaScreen({ navigation }) {
                                                         )}
                                                     </div>
                                                     <div>
-                                                        <h3 className="text-base font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                                        <h3 className={`text-base font-bold text-slate-800 ${isAdmin ? 'group-hover:text-emerald-700' : ''} transition-colors`}>
                                                             {item.titulo || 'Atividade'}
                                                         </h3>
                                                         <span className="text-[11px] text-slate-400">
@@ -218,10 +228,12 @@ export function PorcentagemListaScreen({ navigation }) {
                                             <span className={prog === 100 ? 'text-emerald-600 font-bold' : 'text-slate-500'}>
                                                 {prog === 100 ? 'Concluído' : `${(100 - prog).toFixed(0)}% restante`}
                                             </span>
-                                            <div className="flex items-center gap-1 text-emerald-600 group-hover:translate-x-1 transition-transform">
-                                                <span>Editar</span>
-                                                <ChevronRight size={14} />
-                                            </div>
+                                            {isAdmin && (
+                                                <div className="flex items-center gap-1 text-emerald-600 group-hover:translate-x-1 transition-transform">
+                                                    <span>Editar</span>
+                                                    <ChevronRight size={14} />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -231,9 +243,10 @@ export function PorcentagemListaScreen({ navigation }) {
                 </div>
 
                 {/* Modal de Andamento */}
-                {modal.visible && (
+                {modal.visible && isAdmin && (
                     <ModalAddOrEditPorcentagem
                         itemId={modal.itemId}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModal({ visible: false, itemId: null })}
                     />
                 )}
@@ -244,7 +257,7 @@ export function PorcentagemListaScreen({ navigation }) {
 }
 
 // Modal de Andamento
-function ModalAddOrEditPorcentagem({ itemId, onClose }) {
+function ModalAddOrEditPorcentagem({ itemId, onClose, effectiveUid }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [titulo, setTitulo] = useState('');
@@ -254,7 +267,7 @@ function ModalAddOrEditPorcentagem({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'porcentagens', itemId));
@@ -270,7 +283,7 @@ function ModalAddOrEditPorcentagem({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -281,7 +294,7 @@ function ModalAddOrEditPorcentagem({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -305,7 +318,7 @@ function ModalAddOrEditPorcentagem({ itemId, onClose }) {
 
     const handleDelete = async () => {
         if (!window.confirm("Deseja realmente excluir esta atividade?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'porcentagens', itemId));
@@ -416,13 +429,14 @@ function ModalAddOrEditPorcentagem({ itemId, onClose }) {
 // =========================================================================
 
 export function PluviometroListaScreen({ navigation }) {
+    const { effectiveUid, isAdmin, isMember } = usePropertyAuth();
     const [medicoes, setMedicoes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modal, setModal] = useState({ visible: false, itemId: null });
     const [syncModalVisible, setSyncModalVisible] = useState(false);
 
     useEffect(() => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const q = query(collection(db, 'users', uid, 'pluviometro'), orderBy('dataMedicao', 'desc'));
@@ -434,7 +448,7 @@ export function PluviometroListaScreen({ navigation }) {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [effectiveUid]);
 
     // Estatísticas de Chuva
     const stats = useMemo(() => {
@@ -472,8 +486,9 @@ export function PluviometroListaScreen({ navigation }) {
     }, [medicoes]);
 
     const handleDelete = async (id) => {
+        if (!isAdmin) return;
         if (!window.confirm("Deseja realmente excluir esta medição de chuva?")) return;
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
         try {
             await deleteDoc(doc(db, 'users', uid, 'pluviometro', id));
@@ -504,23 +519,31 @@ export function PluviometroListaScreen({ navigation }) {
                     </div>
 
                     <div className="screen-header-actions flex items-center gap-2.5 flex-wrap">
-                        {/* Botão Sincronizar via OpenWeather / Estação */}
-                        <button
-                            onClick={() => setSyncModalVisible(true)}
-                            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-sky-950/15"
-                            title="Consultar chuvas de hoje e dias anteriores via OpenWeather & Radar"
-                        >
-                            <Radio size={16} className="animate-pulse" />
-                            <span>Consultar Chuvas (OpenWeather)</span>
-                        </button>
+                        {isAdmin ? (
+                            <>
+                                {/* Botão Sincronizar via OpenWeather / Estação */}
+                                <button
+                                    onClick={() => setSyncModalVisible(true)}
+                                    className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-sky-950/15"
+                                    title="Consultar chuvas de hoje e dias anteriores via OpenWeather & Radar"
+                                >
+                                    <Radio size={16} className="animate-pulse" />
+                                    <span>Consultar Chuvas (OpenWeather)</span>
+                                </button>
 
-                        <button
-                            onClick={() => setModal({ visible: true, itemId: null })}
-                            className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-sky-950/10"
-                        >
-                            <PlusCircle size={18} />
-                            <span>Nova Medição</span>
-                        </button>
+                                <button
+                                    onClick={() => setModal({ visible: true, itemId: null })}
+                                    className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-sky-950/10"
+                                >
+                                    <PlusCircle size={18} />
+                                    <span>Nova Medição</span>
+                                </button>
+                            </>
+                        ) : (
+                            <div className="px-3 py-1.5 bg-slate-200/80 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-slate-300">
+                                <span>👤 Visualização</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -586,15 +609,17 @@ export function PluviometroListaScreen({ navigation }) {
                             </div>
                             <h3 className="text-base font-bold text-slate-700">Nenhuma medição registrada</h3>
                             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-4">
-                                Você pode registrar a chuva manualmente ou puxar o histórico de hoje e dias anteriores via OpenWeather.
+                                {isAdmin ? 'Você pode registrar a chuva manualmente ou puxar o histórico de hoje e dias anteriores via OpenWeather.' : 'Nenhuma medição de chuva encontrada.'}
                             </p>
-                            <button
-                                onClick={() => setSyncModalVisible(true)}
-                                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
-                            >
-                                <Radio size={15} />
-                                <span>Consultar Chuvas Recentes via API</span>
-                            </button>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setSyncModalVisible(true)}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                                >
+                                    <Radio size={15} />
+                                    <span>Consultar Chuvas Recentes via API</span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="cards-grid rain-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
@@ -634,22 +659,24 @@ export function PluviometroListaScreen({ navigation }) {
                                             )}
                                         </div>
 
-                                        <div className="flex items-center justify-end gap-2 mt-3 pt-2.5 border-t border-slate-100">
-                                            <button
-                                                onClick={() => setModal({ visible: true, itemId: item.id })}
-                                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Pencil size={16} />
-                                                <span>Editar</span>
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
-                                            >
-                                                <Trash2 size={16} />
-                                                <span>Excluir</span>
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="flex items-center justify-end gap-2 mt-3 pt-2.5 border-t border-slate-100">
+                                                <button
+                                                    onClick={() => setModal({ visible: true, itemId: item.id })}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Pencil size={16} />
+                                                    <span>Editar</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer text-xs font-semibold flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    <span>Excluir</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -658,17 +685,19 @@ export function PluviometroListaScreen({ navigation }) {
                 </div>
 
                 {/* Modal Pluviômetro Manual / IA */}
-                {modal.visible && (
+                {modal.visible && isAdmin && (
                     <ModalAddOrEditPluviometro
                         itemId={modal.itemId}
+                        effectiveUid={effectiveUid}
                         onClose={() => setModal({ visible: false, itemId: null })}
                     />
                 )}
 
                 {/* Modal Sincronização OpenWeather de Chuvas */}
-                {syncModalVisible && (
+                {syncModalVisible && isAdmin && (
                     <ModalOpenWeatherRainSync
                         existingRecords={medicoes}
+                        effectiveUid={effectiveUid}
                         onClose={() => setSyncModalVisible(false)}
                     />
                 )}
@@ -682,7 +711,7 @@ export function PluviometroListaScreen({ navigation }) {
 // 3. MODAL DE MEDIÇÃO INDIVIDUAL (MANUAL / IA / OPENWEATHER)
 // =========================================================================
 
-function ModalAddOrEditPluviometro({ itemId, onClose }) {
+function ModalAddOrEditPluviometro({ itemId, onClose, effectiveUid }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(!!itemId);
     const [aiLoading, setAiLoading] = useState(false);
@@ -697,7 +726,7 @@ function ModalAddOrEditPluviometro({ itemId, onClose }) {
     useEffect(() => {
         if (!itemId) return;
         (async () => {
-            const uid = auth.currentUser?.uid;
+            const uid = effectiveUid || auth.currentUser?.uid;
             if (!uid) return;
             try {
                 const snap = await getDoc(doc(db, 'users', uid, 'pluviometro', itemId));
@@ -714,7 +743,7 @@ function ModalAddOrEditPluviometro({ itemId, onClose }) {
                 setLoading(false);
             }
         })();
-    }, [itemId]);
+    }, [itemId, effectiveUid]);
 
     const handleAiFileUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -787,7 +816,7 @@ function ModalAddOrEditPluviometro({ itemId, onClose }) {
         }
 
         setSaving(true);
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         try {
@@ -973,7 +1002,7 @@ function ModalAddOrEditPluviometro({ itemId, onClose }) {
 // 4. MODAL DE CONSULTA & SINCRONIZAÇÃO OPENWEATHER (HOJE E DIAS ANTERIORES)
 // =========================================================================
 
-function ModalOpenWeatherRainSync({ existingRecords = [], onClose }) {
+function ModalOpenWeatherRainSync({ existingRecords = [], onClose, effectiveUid }) {
     const [pastDays, setPastDays] = useState(7);
     const [loading, setLoading] = useState(true);
     const [importingId, setImportingId] = useState(null);
@@ -1107,7 +1136,7 @@ function ModalOpenWeatherRainSync({ existingRecords = [], onClose }) {
 
     // Importa um dia específico para o Firestore
     const handleImportDay = async (dayItem) => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         setImportingId(dayItem.date);
@@ -1132,7 +1161,7 @@ function ModalOpenWeatherRainSync({ existingRecords = [], onClose }) {
 
     // Importa em lote todos os dias que tiveram chuva (mm > 0) e que não foram importados ainda
     const handleImportAllRainyDays = async () => {
-        const uid = auth.currentUser?.uid;
+        const uid = effectiveUid || auth.currentUser?.uid;
         if (!uid) return;
 
         const toImport = rainHistory.filter(item => item.mm > 0 && !existingDatesSet.has(item.date));

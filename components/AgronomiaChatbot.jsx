@@ -1,62 +1,53 @@
-
-
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-    Bot,
-    Send,
-    X,
-    Maximize2,
-    Minimize2,
-    Settings,
-    Trash2,
-    Globe,
-    Camera,
-    Mic,
-    MicOff,
-    Volume2,
-    VolumeX,
-    Paperclip,
-    Sparkles,
-    TrendingUp,
-    CloudRain,
-    Archive,
-    Gauge,
-    ShieldCheck,
-    MapPin,
-    ExternalLink,
-    ChevronDown,
-    ChevronUp,
-    RefreshCw,
-    Search,
-    Cpu,
-    Zap,
-    Check,
-    AlertCircle,
-    Copy,
-    Share2,
-    Eye,
-    CornerDownLeft,
-    Layers,
-    FileText,
-    Wrench,
-    Sprout,
-    Wheat,
     ArrowUpRight,
     BookOpen,
+    Bot,
+    Camera,
+    Check,
+    ChevronDown,
+    CloudRain,
+    Copy,
+    Cpu,
+    ExternalLink,
+    Eye,
+    FileText,
     FlaskConical,
-    Droplets
+    Globe,
+    MapPin,
+    Maximize2,
+    Mic,
+    MicOff,
+    Minimize2,
+    Navigation,
+    Paperclip,
+    RefreshCw,
+    Send,
+    Settings,
+    SlidersHorizontal,
+    Sparkles,
+    Sprout,
+    Trash2,
+    TrendingUp,
+    Volume2,
+    VolumeX,
+    X,
+    Zap
 } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { prepareFileForVision } from '../services/agroDocumentAIService';
 import {
-    GROQ_MODELS,
-    WEB_SEARCH_PRESETS,
+    BRAZILIAN_AGRO_REGIONS,
+    buildSearchSettings,
+    compressImageFile,
     FARM_TOOLS_DEFINITION,
     FARM_TOOLS_IMPLEMENTATION,
+    GROQ_MODELS,
     groqClient,
+    SEARCH_SCOPES,
     speakTextNative,
     stopNativeSpeech,
-    compressImageFile
+    WEB_SEARCH_PRESETS
 } from '../services/groqService';
-import { prepareFileForVision } from '../services/agroDocumentAIService';
 import { getCurrentPosition, reverseGeocodeOSM } from '../services/locationService';
 import PdfViewerModal from './PdfViewerModal';
 
@@ -192,13 +183,18 @@ export default function AgronomiaChatbot({
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Configurações de Modelos e Busca (Apenas Meta e OpenAI mais precisos)
-    const [selectedModelId, setSelectedModelId] = useState('llama-3.3-70b-versatile');
+    // Configurações de Modelos e Busca Web Regional / Nacional
+    const [selectedModelId, setSelectedModelId] = useState('groq/compound');
     const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+    const [showSearchRibbon, setShowSearchRibbon] = useState(false); // Oculto por padrão para interface limpa
+    const [searchScope, setSearchScope] = useState('nacional'); // 'nacional', 'regional', 'global'
+    const [selectedState, setSelectedState] = useState('AUTO'); // 'AUTO' ou UF (ex: 'PR', 'MT', 'RS')
     const [searchPreset, setSearchPreset] = useState('all');
     const [customDomains, setCustomDomains] = useState('');
+    const [excludeDomains, setExcludeDomains] = useState('');
+    const [showStateDropdown, setShowStateDropdown] = useState(false);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [activeTabCategory, setActiveTabCategory] = useState('meta');
+    const [activeTabCategory, setActiveTabCategory] = useState('groq');
 
     // Mídias: Imagens e Visão
     const [attachedImages, setAttachedImages] = useState([]); // [{ url, base64, name, rawFile, isPdf }]
@@ -284,12 +280,41 @@ export default function AgronomiaChatbot({
         fetchLocation();
     }, [fetchLocation]);
 
-    // Prompt de Sistema dinâmico
+    // Prompt de Sistema dinâmico com contextualização Regional e Nacional
     const systemPrompt = useMemo(() => {
+        let regionalContext = '';
+        if (searchScope === 'regional') {
+            let effectiveUf = selectedState;
+            if (effectiveUf === 'AUTO' && location?.region) {
+                const found = Object.entries(BRAZILIAN_AGRO_REGIONS).find(([uf, data]) =>
+                    location.region.toLowerCase().includes(data.name.toLowerCase()) ||
+                    location.region.toUpperCase().includes(uf)
+                );
+                if (found) effectiveUf = found[0];
+            }
+            if (effectiveUf === 'AUTO') effectiveUf = 'PR'; // Padrão Brasil Sul/Centro
+            const regionData = BRAZILIAN_AGRO_REGIONS[effectiveUf] || BRAZILIAN_AGRO_REGIONS['PR'];
+            regionalContext = `
+ESCOPO DE PESQUISA & ATUAÇÃO ATIVO: 📍 REGIONAL (${regionData.name} - ${regionData.uf})
+- Principais Órgãos e Institutos Locais: ${regionData.institutes}
+- Polos Agrícolas e Macrorregiões: ${regionData.hubs}
+- Diretriz: Ao responder e pesquisar dados do agro, priorize o contexto, cotações de balcão/disponível, vazio sanitário e informativos técnicos do Estado de ${regionData.name} (${regionData.uf}).`;
+        } else if (searchScope === 'nacional') {
+            regionalContext = `
+ESCOPO DE PESQUISA & ATUAÇÃO ATIVO: 🇧🇷 NACIONAL (Brasil Geral)
+- Órgãos e Fontes de Referência: CEPEA/ESALQ, B3 Agro, CONAB (Acompanhamento da Safra), MAPA, Embrapa e portais nacionais do agronegócio.
+- Diretriz: Priorize cotações e indicadores médios nacionais, relatórios consolidados de safra e normas federais brasileiras.`;
+        } else {
+            regionalContext = `
+ESCOPO DE PESQUISA & ATUAÇÃO ATIVO: 🌐 GLOBAL (Internacional)
+- Fontes de Referência: Bolsa de Chicago (CBOT), Relatórios WASDE/USDA, Mercados Internacionais de Grãos, Fertilizantes e Câmbio.`;
+        }
+
         return `
 Você é a **AgronomIA**, a inteligência artificial especialista da W3Labs em agronegócio, maquinários agrícolas, defensivos, colheita e gestão de fazendas de alta performance.
 Usuário atual: ${userName}.
 Localização da Fazenda: ${location ? `${location.city}, ${location.region} - ${location.country}` : 'Brasil'}.
+${regionalContext}
 
 SEUS SUPERPODERES E FERRAMENTAS DO BANCO DE DADOS (FARM TOOLS):
 Você tem acesso direto de LEITURA e ESCRITA ao banco de dados oficial da fazenda através de chamadas de função (Function Calling):
@@ -318,9 +343,9 @@ Você tem acesso direto de LEITURA e ESCRITA ao banco de dados oficial da fazend
 DIRETRIZES DE ATENDIMENTO:
 - Quando o produtor enviar uma foto ou PDF (de manual de máquina, romaneio de grãos, bula de defensivo, foto de pluviômetro ou anotação de chuva) ou solicitar qualquer cadastro, analise detalhadamente com visão computacional, execute a ferramenta de gravação correspondente e apresente uma confirmação elegante com os dados cadastrados em formato Markdown organizado com tabelas ou tópicos.
 - Seja sempre altamente técnico, prático, encorajador e preciso nas recomendações agronômicas e de engenharia agrícola.
-- Ao pesquisar na internet (Web Search), integre as informações mais recentes do mercado e clima com fontes confiáveis.
+- Ao pesquisar na internet (Web Search), integre as informações mais recentes do mercado e clima com fontes confiáveis e cite o contexto regional ou nacional apropriado.
 `;
-    }, [userName, location]);
+    }, [userName, location, searchScope, selectedState]);
 
     // ==========================================
     // FLUXO DE ENVIO DE MENSAGENS E INFERÊNCIA
@@ -358,6 +383,7 @@ DIRETRIZES DE ATENDIMENTO:
                 text: '',
                 reasoning: '',
                 sources: [],
+                visitedPages: [],
                 modelUsed: selectedModelId,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
@@ -370,20 +396,22 @@ DIRETRIZES DE ATENDIMENTO:
                 effectiveModel = 'qwen/qwen3.6-27b';
             }
 
-            // Monta payload de busca web caso o modelo suporte (ex: OpenAI GPT-OSS 120B)
+            // Constrói payload dinâmico e inteligente de busca web regional / nacional
             let searchSettings = undefined;
             if (webSearchEnabled && currentModelInfo.supportsWebSearch) {
-                const presetObj = WEB_SEARCH_PRESETS.find(p => p.id === searchPreset) || WEB_SEARCH_PRESETS[0];
-                searchSettings = { ...presetObj.settings };
-                if (customDomains.trim()) {
-                    const extra = customDomains.split(',').map(d => d.trim()).filter(Boolean);
-                    searchSettings.include_domains = [...(searchSettings.include_domains || []), ...extra];
-                }
+                searchSettings = buildSearchSettings({
+                    scope: searchScope,
+                    selectedState,
+                    preset: searchPreset,
+                    customDomains,
+                    excludeDomains,
+                    location
+                });
             }
 
             // Formatação de mensagens da API mantendo o histórico enxuto
-            // Limita aos últimos 10 turnos e apenas a mensagem mais recente envia a imagem comprimida
-            const recentHistory = newHistory.slice(-10);
+            // Limita aos últimos 4 turnos (2 pares user/bot) para evitar 413 payload too large
+            const recentHistory = newHistory.slice(-4);
             let lastImageIndex = -1;
             for (let i = recentHistory.length - 1; i >= 0; i--) {
                 if (recentHistory[i].images && recentHistory[i].images.length > 0) {
@@ -404,9 +432,10 @@ DIRETRIZES DE ATENDIMENTO:
                         const processedImages = [];
                         for (const img of m.images) {
                             let imgUrl = img.base64 || img.url;
-                            if (typeof imgUrl === 'string' && imgUrl.startsWith('data:') && imgUrl.length > 150000) {
+                            // Comprime SEMPRE que tiver dado de imagem (qualquer data: URL)
+                            if (typeof imgUrl === 'string' && imgUrl.startsWith('data:')) {
                                 try {
-                                    imgUrl = await compressImageFile(imgUrl, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
+                                    imgUrl = await compressImageFile(imgUrl, { maxWidth: 512, maxHeight: 512, quality: 0.45 });
                                 } catch (err) {
                                     console.warn("Erro ao comprimir imagem no envio:", err);
                                 }
@@ -446,6 +475,7 @@ DIRETRIZES DE ATENDIMENTO:
             let accumulatedText = '';
             let accumulatedReasoning = '';
             let accumulatedSources = [];
+            let accumulatedVisitedPages = [];
 
             while (keepGenerating && loopCount < 5) {
                 loopCount++;
@@ -467,15 +497,36 @@ DIRETRIZES DE ATENDIMENTO:
 
                 if (!msg) throw new Error("Resposta vazia da GroqCloud.");
 
-                // Captura raciocínio (reasoning) e fontes web (executed_tools)
+                // Captura raciocínio (reasoning)
                 if (msg.reasoning) {
                     accumulatedReasoning += (accumulatedReasoning ? '\n\n' : '') + msg.reasoning;
                 }
 
+                // Captura ferramentas executadas (search, visit e web tools)
                 if (msg.executed_tools && msg.executed_tools.length > 0) {
                     msg.executed_tools.forEach(tool => {
+                        // 1. Resultados de Busca Tavily/Groq
                         if (tool.search_results?.results) {
                             accumulatedSources.push(...tool.search_results.results);
+                        }
+
+                        // 2. Visita nativa de Websites (Groq visit tool)
+                        if (tool.type === 'visit' || tool.visit_results || tool.visited_page || (tool.arguments && typeof tool.arguments === 'string' && tool.arguments.includes('http'))) {
+                            let pageUrl = '';
+                            try {
+                                const parsedArgs = typeof tool.arguments === 'string' ? JSON.parse(tool.arguments) : tool.arguments;
+                                pageUrl = parsedArgs?.url || '';
+                            } catch (e) {
+                                pageUrl = tool.url || '';
+                            }
+
+                            if (pageUrl || tool.page_title) {
+                                accumulatedVisitedPages.push({
+                                    url: pageUrl,
+                                    title: tool.page_title || tool.title || pageUrl,
+                                    snippet: tool.output || tool.content || tool.snippet || ''
+                                });
+                            }
                         }
                     });
                 }
@@ -490,6 +541,7 @@ DIRETRIZES DE ATENDIMENTO:
                     text: accumulatedText,
                     reasoning: accumulatedReasoning,
                     sources: accumulatedSources,
+                    visitedPages: accumulatedVisitedPages,
                     usage: response.usage ? {
                         duration: response.usage.total_time?.toFixed(2) || '0.35',
                         tokens: response.usage.total_tokens || 0
@@ -528,15 +580,19 @@ DIRETRIZES DE ATENDIMENTO:
 
         } catch (error) {
             console.error("Erro no processamento da AgronomIA:", error);
+            const displayMessage = error.friendlyMessage
+                || (error.message?.includes('413') || error.message?.toLowerCase().includes('too large')
+                    ? '⚠️ Mensagem ou imagem muito grande. Tente enviar uma imagem menor ou inicie uma nova conversa para limpar o histórico.'
+                    : `⚠️ **Falha de Comunicação com o Motor Groq**\n${error.message || 'Verifique sua conexão ou a chave de API.'}`);
             setMessages(prev => prev.map(m => m.id === botMsgId ? {
                 ...m,
-                text: `⚠️ **Falha de Comunicação com o Motor Groq**\n${error.message || 'Verifique sua conexão ou a chave de API.'}`,
+                text: displayMessage,
                 isError: true
             } : m));
         } finally {
             setLoading(false);
         }
-    }, [inputText, loading, attachedImages, messages, selectedModelId, currentModelInfo, webSearchEnabled, searchPreset, customDomains, systemPrompt, autoSpeak]);
+    }, [inputText, loading, attachedImages, messages, selectedModelId, currentModelInfo, webSearchEnabled, searchScope, selectedState, searchPreset, customDomains, excludeDomains, location, systemPrompt, autoSpeak]);
 
     // ==========================================
     // GRAVAÇÃO E TRANSCRIÇÃO DE VOZ (WHISPER)
@@ -724,7 +780,7 @@ DIRETRIZES DE ATENDIMENTO:
             id: 'chuva',
             label: 'Adicionar Chuva',
             desc: 'Lançar no pluviômetro da fazenda',
-            query: 'Quero registrar uma chuva de 35mm hoje no pluviômetro do Talhão 02 da fazenda.',
+            query: 'Quero registrar uma chuva',
             icon: CloudRain,
             color: '#0284c7',
             bgColor: 'rgba(2, 132, 199, 0.15)'
@@ -733,7 +789,7 @@ DIRETRIZES DE ATENDIMENTO:
             id: 'manual',
             label: 'Cadastrar Manual',
             desc: 'Tratores, implementos & colheitadeiras',
-            query: 'Cadastrar manual técnico do trator John Deere 6110J com intervalos de troca de óleo e calibragem.',
+            query: 'Cadastrar manual técnico',
             icon: BookOpen,
             color: '#10b981',
             bgColor: 'rgba(16, 185, 129, 0.15)'
@@ -742,7 +798,7 @@ DIRETRIZES DE ATENDIMENTO:
             id: 'romaneio',
             label: 'Cadastrar Romaneio',
             desc: 'Ticket de pesagem de colheita',
-            query: 'Registrar romaneio de soja nº 849201, peso líquido 38.500 kg, umidade 13.2% no talhão 02.',
+            query: 'Registrar romaneio',
             icon: FileText,
             color: '#f59e0b',
             bgColor: 'rgba(245, 158, 11, 0.15)'
@@ -751,7 +807,7 @@ DIRETRIZES DE ATENDIMENTO:
             id: 'bula',
             label: 'Análise de Bula',
             desc: 'Defensivos, dosagens e carência',
-            query: 'Analisar bula do fungicida Fox Xpro com dosagem recomendada por hectare e período de carência na soja.',
+            query: 'Analisar bula',
             icon: FlaskConical,
             color: '#a855f7',
             bgColor: 'rgba(168, 85, 247, 0.15)'
@@ -769,7 +825,7 @@ DIRETRIZES DE ATENDIMENTO:
             id: 'pragas',
             label: 'Diagnóstico de Lavoura',
             desc: 'Pragas, doenças e fitossanidade',
-            query: 'Quais os principais sintomas e manejo para Percevejo-marrom e Lagarta-falsa-medideira na soja?',
+            query: 'Quais os principais sintomas e manejo',
             icon: Sprout,
             color: '#38bdf8',
             bgColor: 'rgba(56, 189, 248, 0.15)'
@@ -783,26 +839,16 @@ DIRETRIZES DE ATENDIMENTO:
         <>
             {/* ÍCONE FLUTUANTE PERMANENTE NO CANTO INFERIOR DIREITO */}
             {permanent && !isOpen && (
-                <div className="fixed right-5 bottom-5 z-40 flex flex-col items-end gap-2.5 select-none animate-fadeIn">
-                    {/* Badge Flutuante de Status */}
-                    <div
-                        className="agronomia-fab-badge flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer"
-                        onClick={() => setIsOpen(true)}
-                    >
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="tracking-wide font-black text-[11px] text-emerald-300">AgronomIA</span>
-                        <span className="text-[10px] text-slate-300 px-1.5 py-0.5 rounded bg-white/10">{currentModelInfo.badge}</span>
-                    </div>
-
+                <div className="fixed right-4 bottom-4 sm:right-5 sm:bottom-5 z-40 select-none animate-fadeIn">
                     {/* Botão FAB Principal 3D */}
                     <button
                         onClick={() => setIsOpen(true)}
-                        className="agronomia-fab-button w-16 h-16 rounded-2xl text-white flex items-center justify-center cursor-pointer group relative"
+                        className="agronomia-fab-button w-14 h-14 sm:w-16 sm:h-16 rounded-2xl text-white flex items-center justify-center cursor-pointer group relative shadow-xl"
                         title="Abrir Assistente Inteligente AgronomIA"
                     >
-                        <Bot size={32} className="group-hover:rotate-12 transition-transform duration-300" />
+                        <Bot size={28} className="group-hover:rotate-12 transition-transform duration-300 sm:w-8 sm:h-8" />
                         {/* Indicador de status online */}
-                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 border-2 border-slate-900 flex items-center justify-center">
+                        <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-400 border-2 border-slate-900 flex items-center justify-center">
                             <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                         </span>
                     </button>
@@ -852,7 +898,9 @@ DIRETRIZES DE ATENDIMENTO:
                         <div className="flex items-center gap-1 shrink-0">
                             {/* Toggle de Busca Web */}
                             <button
-                                onClick={() => setWebSearchEnabled(prev => !prev)}
+                                onClick={() => {
+                                    setWebSearchEnabled(prev => !prev);
+                                }}
                                 className={`p-2 rounded-xl transition-all cursor-pointer ${
                                     webSearchEnabled
                                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20'
@@ -862,6 +910,21 @@ DIRETRIZES DE ATENDIMENTO:
                             >
                                 <Globe size={15} />
                             </button>
+
+                            {/* Botão para Exibir/Ocultar Filtros de Busca (Oculto por padrão) */}
+                            {webSearchEnabled && (
+                                <button
+                                    onClick={() => setShowSearchRibbon(prev => !prev)}
+                                    className={`p-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 ${
+                                        showSearchRibbon
+                                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                                            : 'text-slate-400 hover:text-white hover:bg-white/10'
+                                    }`}
+                                    title={showSearchRibbon ? "Ocultar Filtros de Busca" : "Exibir Âmbito e Filtros de Busca"}
+                                >
+                                    <SlidersHorizontal size={14} />
+                                </button>
+                            )}
 
                             {/* Configurações de Modelos */}
                             <button
@@ -907,6 +970,131 @@ DIRETRIZES DE ATENDIMENTO:
                             </button>
                         </div>
                     </div>
+
+                    {/* BARRA DINÂMICA DE ÂMBITO DA BUSCA WEB (NACIONAL / REGIONAL / GLOBAL) - OCULTA POR PADRÃO */}
+                    {webSearchEnabled && showSearchRibbon && (
+                        <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 backdrop-blur-md flex flex-col gap-2 shrink-0 select-none animate-fadeIn">
+                            <div className="flex items-center justify-between gap-2">
+                                {/* Seletor de Escopo: Nacional / Regional / Global */}
+                                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
+                                    {Object.values(SEARCH_SCOPES).map((s) => {
+                                        const isActive = searchScope === s.id;
+                                        return (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => {
+                                                    setSearchScope(s.id);
+                                                    if (s.id !== 'regional') setShowStateDropdown(false);
+                                                }}
+                                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                                    isActive
+                                                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-950/40'
+                                                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                                }`}
+                                                title={s.desc || s.label}
+                                            >
+                                                <span>{s.flag || s.icon || '🌐'}</span>
+                                                <span>{s.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Seletor de Estado / Hub Regional se modo Regional ativo */}
+                                {searchScope === 'regional' && (
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setShowStateDropdown(prev => !prev)}
+                                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all flex items-center gap-1 cursor-pointer"
+                                            title="Clique para trocar o Estado/Região da busca"
+                                        >
+                                            <MapPin size={12} />
+                                            <span>
+                                                {selectedState === 'AUTO'
+                                                    ? (location?.region ? `📍 ${location.region}` : '📍 GPS Auto')
+                                                    : `📍 ${selectedState} (${BRAZILIAN_AGRO_REGIONS[selectedState]?.name || selectedState})`}
+                                            </span>
+                                            <ChevronDown size={12} />
+                                        </button>
+
+                                        {/* Dropdown de Estados */}
+                                        {showStateDropdown && (
+                                            <div className="absolute right-0 top-full mt-1 w-64 bg-slate-900/95 border border-emerald-500/30 rounded-2xl p-2 shadow-2xl z-50 backdrop-blur-xl max-h-60 overflow-y-auto">
+                                                <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
+                                                    Selecione o Estado Agrícola
+                                                </div>
+                                                <button
+                                                    onClick={() => { setSelectedState('AUTO'); setShowStateDropdown(false); }}
+                                                    className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-bold transition-all flex items-center justify-between mb-1 ${
+                                                        selectedState === 'AUTO' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-300 hover:bg-white/10'
+                                                    }`}
+                                                >
+                                                    <span className="flex items-center gap-1.5">
+                                                        <Navigation size={12} className="text-emerald-400" />
+                                                        <span>GPS Automático ({location?.city || 'Brasil'})</span>
+                                                    </span>
+                                                    {selectedState === 'AUTO' && <Check size={12} className="text-emerald-400" />}
+                                                </button>
+
+                                                {Object.entries(BRAZILIAN_AGRO_REGIONS).map(([uf, data]) => (
+                                                    <button
+                                                        key={uf}
+                                                        onClick={() => { setSelectedState(uf); setShowStateDropdown(false); }}
+                                                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold transition-all flex items-center justify-between ${
+                                                            selectedState === uf ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold' : 'text-slate-300 hover:bg-white/10'
+                                                        }`}
+                                                    >
+                                                        <div>
+                                                            <div className="text-white font-bold">{data.name} ({uf})</div>
+                                                            <div className="text-[9px] text-slate-400 truncate max-w-[180px]">{data.hubs}</div>
+                                                        </div>
+                                                        {selectedState === uf && <Check size={12} className="text-amber-400" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                    {/* Badge do Modelo Ativo */}
+                                    <div className="text-[10px] text-slate-400 hidden sm:flex items-center gap-1.5 font-mono">
+                                        <Zap size={11} className="text-emerald-400" />
+                                        <span>{currentModelInfo.badge}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowSearchRibbon(false)}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                                        title="Ocultar barra de filtros"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Pílulas de Filtro de Tópico Rápido */}
+                            <div className="flex items-center gap-1 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                                {WEB_SEARCH_PRESETS.map(preset => {
+                                    const isSelected = searchPreset === preset.id;
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            onClick={() => setSearchPreset(preset.id)}
+                                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                                                isSelected
+                                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                                                    : 'text-slate-400 hover:text-slate-200 bg-white/5 border border-white/5'
+                                            }`}
+                                            title={preset.desc}
+                                        >
+                                            <span>{preset.icon}</span>
+                                            <span>{preset.shortLabel || preset.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* CORPO CENTRAL DO CHAT */}
                     <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -1075,36 +1263,73 @@ DIRETRIZES DE ATENDIMENTO:
                                             {/* Conteúdo principal formatado via Markdown-CSS */}
                                             <SimpleMarkdown text={item.text} isSystem={item.sender === 'system'} />
 
-                                            {/* Fontes Web e Citações (Tavily/Groq) */}
-                                            {item.sources && item.sources.length > 0 && (
-                                                <div className="mt-3 pt-3 border-t border-white/10">
-                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1 mb-2">
-                                                        <Globe size={12} />
-                                                        <span>Fontes Consultadas na Web ({item.sources.length}):</span>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                                        {item.sources.slice(0, 4).map((src, sIdx) => (
-                                                            <a
-                                                                key={sIdx}
-                                                                href={src.url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="p-2 rounded-xl bg-black/30 hover:bg-black/50 border border-white/5 hover:border-emerald-500/30 flex items-center justify-between gap-2 transition-all group"
-                                                            >
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="text-[11px] font-bold text-white group-hover:text-emerald-300 truncate">
-                                                                        {src.title || src.url}
+                                                {/* Páginas Web Visitadas em Tempo Real (Groq Visit Tool) */}
+                                                {item.visitedPages && item.visitedPages.length > 0 && (
+                                                    <div className="mt-3 pt-3 border-t border-white/10">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1 mb-2">
+                                                            <Compass size={12} />
+                                                            <span>Páginas Analisadas na Íntegra (Visit Tool):</span>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            {item.visitedPages.map((page, pIdx) => (
+                                                                <a
+                                                                    key={pIdx}
+                                                                    href={page.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="p-2.5 rounded-xl bg-cyan-950/30 hover:bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-between gap-2 transition-all group"
+                                                                >
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-[11px] font-bold text-cyan-200 group-hover:text-cyan-100 truncate flex items-center gap-1.5">
+                                                                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-[9px] text-cyan-300 border border-cyan-500/30">Visita Completa</span>
+                                                                            <span>{page.title || page.url}</span>
+                                                                        </div>
+                                                                        {page.snippet && (
+                                                                            <div className="text-[10px] text-slate-300 line-clamp-1 mt-0.5 font-sans">
+                                                                                {page.snippet}
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="text-[9px] text-cyan-400/70 truncate mt-0.5">
+                                                                            {page.url}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-[9px] text-slate-400 truncate mt-0.5">
-                                                                        {src.url.replace(/^https?:\/\//, '').split('/')[0]}
-                                                                    </div>
-                                                                </div>
-                                                                <ExternalLink size={12} className="text-slate-500 group-hover:text-emerald-400 shrink-0" />
-                                                            </a>
-                                                        ))}
+                                                                    <ArrowUpRight size={13} className="text-cyan-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+                                                                </a>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+
+                                                {/* Fontes Web e Citações (Tavily/Groq) */}
+                                                {item.sources && item.sources.length > 0 && (
+                                                    <div className="mt-3 pt-3 border-t border-white/10">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1 mb-2">
+                                                            <Globe size={12} />
+                                                            <span>Fontes Consultadas na Web ({item.sources.length}):</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                                            {item.sources.slice(0, 6).map((src, sIdx) => (
+                                                                <a
+                                                                    key={sIdx}
+                                                                    href={src.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="p-2 rounded-xl bg-black/30 hover:bg-black/50 border border-white/5 hover:border-emerald-500/30 flex items-center justify-between gap-2 transition-all group"
+                                                                >
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-[11px] font-bold text-white group-hover:text-emerald-300 truncate">
+                                                                            {src.title || src.url}
+                                                                        </div>
+                                                                        <div className="text-[9px] text-slate-400 truncate mt-0.5">
+                                                                            {src.url.replace(/^https?:\/\//, '').split('/')[0]}
+                                                                        </div>
+                                                                    </div>
+                                                                    <ExternalLink size={12} className="text-slate-500 group-hover:text-emerald-400 shrink-0" />
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                             {/* Ações da Mensagem: Copiar, Ouvir por Voz (TTS) e Métricas */}
                                             {item.sender === 'bot' && !item.isError && (
@@ -1350,11 +1575,12 @@ DIRETRIZES DE ATENDIMENTO:
                         </div>
 
                         {/* Abas de Categorias de Modelos */}
-                        <div className="flex px-6 pt-4 gap-2 border-b border-white/10 overflow-x-auto">
+                        <div className="flex px-6 pt-4 gap-2 border-b border-white/10 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                             {[
-                                { id: 'meta', label: '🦙 Meta Llama (70B, 8B & Visão)' },
-                                { id: 'openai', label: '🧠 OpenAI (120B & 20B)' },
-                                { id: 'audio', label: '🎙️ OpenAI Whisper (Voz)' },
+                                { id: 'groq', label: '🚀 Groq Compound (Agente + Web)' },
+                                { id: 'meta', label: '🦙 Meta Llama (70B & 8B)' },
+                                { id: 'vision', label: '👁️ Multimodal & Visão' },
+                                { id: 'audio', label: '🎙️ Whisper (Voz)' },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -1414,20 +1640,114 @@ DIRETRIZES DE ATENDIMENTO:
                                     </div>
                                 ))}
 
-                            {/* Opções extras para Busca Web (OpenAI 120B) */}
-                            {activeTabCategory === 'openai' && (
-                                <div className="mt-6 p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-                                    <div className="font-bold text-xs text-white">Configurações Avançadas da Busca Web (OpenAI 120B)</div>
-                                    <div className="text-[11px] text-slate-400">
-                                        Adicione domínios específicos para priorizar pesquisas agrícolas (separados por vírgula):
+                            {/* Opções extras para Busca Web (Groq Compound & Modelos com Web Search) */}
+                            {(activeTabCategory === 'groq' || currentModelInfo.supportsWebSearch) && (
+                                <div className="mt-6 p-4 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+                                    <div className="font-bold text-xs text-white flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Globe size={14} className="text-emerald-400" />
+                                            <span>Configurações & Filtros de Busca Web (Tavily/Groq)</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 bg-white/5 px-2 py-0.5 rounded-lg">
+                                            {searchScope === 'regional' ? 'Âmbito Regional' : searchScope === 'global' ? 'Âmbito Global' : 'Âmbito Nacional'}
+                                        </span>
                                     </div>
-                                    <input
-                                        type="text"
-                                        value={customDomains}
-                                        onChange={(e) => setCustomDomains(e.target.value)}
-                                        placeholder="Ex: noticiasagricolas.com.br, embrapa.br, cepea.esalq.usp.br"
-                                        className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-white text-xs focus:outline-none focus:border-emerald-400"
-                                    />
+
+                                    {/* Âmbito da Busca */}
+                                    <div>
+                                        <label className="text-[11px] text-slate-300 block mb-1.5 font-semibold">
+                                            Âmbito da Pesquisa:
+                                        </label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {Object.values(SEARCH_SCOPES).map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    onClick={() => setSearchScope(s.id)}
+                                                    className={`p-2 rounded-xl text-xs font-bold transition-all text-center border flex flex-col items-center gap-1 ${
+                                                        searchScope === s.id
+                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-md'
+                                                            : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
+                                                    }`}
+                                                >
+                                                    <span className="text-base">{s.flag || '🌐'}</span>
+                                                    <span>{s.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Seletor de Estado se Âmbito for Regional */}
+                                    {searchScope === 'regional' && (
+                                        <div>
+                                            <label className="text-[11px] text-slate-300 block mb-1.5 font-semibold">
+                                                Estado Agrícola de Referência:
+                                            </label>
+                                            <select
+                                                value={selectedState}
+                                                onChange={(e) => setSelectedState(e.target.value)}
+                                                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-300 text-xs font-bold focus:outline-none"
+                                            >
+                                                <option value="AUTO">GPS Automático ({location?.region || location?.city || 'Brasil'})</option>
+                                                {Object.entries(BRAZILIAN_AGRO_REGIONS).map(([uf, data]) => (
+                                                    <option key={uf} value={uf}>
+                                                        {data.name} ({uf}) - Polos: {data.hubs}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    {/* Filtro Temático de Pesquisa */}
+                                    <div>
+                                        <label className="text-[11px] text-slate-300 block mb-1.5 font-semibold">
+                                            Filtro Temático Rápido:
+                                        </label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {WEB_SEARCH_PRESETS.map(p => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => setSearchPreset(p.id)}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border ${
+                                                        searchPreset === p.id
+                                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                                            : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
+                                                    }`}
+                                                >
+                                                    <span>{p.icon}</span>
+                                                    <span>{p.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 pt-1 border-t border-white/5">
+                                        <div>
+                                            <label className="text-[11px] text-slate-300 block mb-1">
+                                                Incluir Domínios Específicos (separados por vírgula):
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={customDomains}
+                                                onChange={(e) => setCustomDomains(e.target.value)}
+                                                placeholder="Ex: noticiasagricolas.com.br, embrapa.br, cepea.esalq.usp.br"
+                                                className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-white text-xs focus:outline-none focus:border-emerald-400"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] text-slate-300 block mb-1">
+                                                Excluir Domínios Indesejados (separados por vírgula):
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={excludeDomains}
+                                                onChange={(e) => setExcludeDomains(e.target.value)}
+                                                placeholder="Ex: wikipedia.org, pinterest.com"
+                                                className="w-full px-3.5 py-2 rounded-xl bg-white/10 border border-white/15 text-white text-xs focus:outline-none focus:border-emerald-400"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
