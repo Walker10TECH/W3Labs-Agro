@@ -1,0 +1,4 @@
+import {getLocalCollection,saveLocalCollection,enqueueOperation} from './offlineQueue';
+export const listEntity=(entity)=>getLocalCollection(entity);
+export const upsertEntity=async(entity,payload,userId=null)=>{const items=await getLocalCollection(entity);const id=payload.id||entity+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);const now=new Date().toISOString();const next={...payload,id,updatedAt:now,createdAt:payload.createdAt||now,_offline:true};const index=items.findIndex(x=>x.id===id);if(index>=0)items[index]=next;else items.unshift(next);await saveLocalCollection(entity,items);await enqueueOperation({entity,operation:index>=0?'UPDATE':'CREATE',payload:next,userId});return next};
+export const removeEntity=async(entity,id,userId=null)=>{const items=await getLocalCollection(entity);await saveLocalCollection(entity,items.filter(x=>x.id!==id));await enqueueOperation({entity,operation:'DELETE',payload:{id},userId})};
