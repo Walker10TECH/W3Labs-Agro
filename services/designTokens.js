@@ -1,0 +1,1 @@
+export const agroTheme={colors:{primary:'#3D7A32',primaryDark:'#285723',primaryLight:'#E8F2E4',background:'#F6F8F3',surface:'#FFFFFF',surfaceSecondary:'#EEF2EA',text:'#172017',textSecondary:'#657064',success:'#2E7D32',warning:'#C88719',danger:'#B83A32',info:'#2E6F9E',border:'#DCE3D7'},radius:{sm:8,md:14,lg:20,pill:999}};
