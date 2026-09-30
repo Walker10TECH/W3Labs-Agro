@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NetInfo from '@react-native-community/netinfo';
+import * as Network from 'expo-network';
 const QUEUE_KEY='@w3labs_agro_sync_queue_v2';
 const DATA_PREFIX='@w3labs_agro_data_v2:';
 const read=async(k,f)=>{try{const r=await AsyncStorage.getItem(k);return r?JSON.parse(r):f}catch{return f}};
@@ -7,6 +7,6 @@ export const getLocalCollection=(name)=>read(DATA_PREFIX+name,[]);
 export const saveLocalCollection=async(name,items)=>{await AsyncStorage.setItem(DATA_PREFIX+name,JSON.stringify(items));return items};
 export const enqueueOperation=async({entity,operation,payload,userId=null})=>{const q=await read(QUEUE_KEY,[]);const item={id:Date.now()+'-'+Math.random().toString(36).slice(2,9),entity,operation,payload,userId,timestamp:new Date().toISOString(),status:'PENDING',attempts:0,error:null};q.push(item);await AsyncStorage.setItem(QUEUE_KEY,JSON.stringify(q));return item};
 export const getSyncQueue=()=>read(QUEUE_KEY,[]);
-export const getSyncStatus=async()=>{const s=await NetInfo.fetch();const q=await getSyncQueue();return{online:Boolean(s.isConnected),pending:q.filter(x=>x.status==='PENDING').length}};
+export const getSyncStatus=async()=>{const s=await Network.getNetworkStateAsync();const q=await getSyncQueue();return{online:Boolean(s.isConnected),pending:q.filter(x=>x.status==='PENDING').length}};
 export const processSyncQueue=async(handler)=>{const q=await read(QUEUE_KEY,[]);for(const item of q){if(item.status!=='PENDING')continue;try{item.status='SYNCING';item.attempts++;await AsyncStorage.setItem(QUEUE_KEY,JSON.stringify(q));await handler(item);item.status='SYNCED';item.error=null}catch(e){item.status='PENDING';item.error=e?.message||'Erro de sincronização'}}const remaining=q.filter(x=>x.status!=='SYNCED');await AsyncStorage.setItem(QUEUE_KEY,JSON.stringify(remaining));return{synced:q.length-remaining.length,pending:remaining.length}};
-export const startConnectivitySync=(handler,onStatus)=>{let mounted=true;const unsubscribe=NetInfo.addEventListener(async s=>{const online=Boolean(s.isConnected);if(mounted&&onStatus)onStatus(online?'ONLINE':'OFFLINE');if(online){const r=await processSyncQueue(handler);if(mounted&&onStatus)onStatus(r.pending?'ERROR':'SYNCED')}});return()=>{mounted=false;unsubscribe()}};
+export const startConnectivitySync=(handler,onStatus)=>{let mounted=true;let last=null;const tick=async()=>{const s=await Network.getNetworkStateAsync();const online=Boolean(s.isConnected);if(mounted&&online!==last){last=online;if(onStatus)onStatus(online?'ONLINE':'OFFLINE')}if(online){const r=await processSyncQueue(handler);if(mounted&&onStatus)onStatus(r.pending?'ERROR':'SYNCED')}};tick();const timer=setInterval(tick,15000);return()=>{mounted=false;clearInterval(timer)}};
