@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {Dimensions,Pressable,ScrollView,StyleSheet,Text,View} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
-import NetInfo from '@react-native-community/netinfo';
+import * as Network from 'expo-network';
 import {signOut} from 'firebase/auth';
 import {auth} from '../firebaseConfig';
 import {agroTheme as theme} from '../services/designTokens';
@@ -12,7 +12,7 @@ const modules=[
 
 export default function HomeScreen({navigation}){
  const[online,setOnline]=useState(true);
- useEffect(()=>NetInfo.addEventListener(s=>setOnline(Boolean(s.isConnected))),[]);
+ useEffect(()=>{let mounted=true;const check=async()=>{const s=await Network.getNetworkStateAsync();if(mounted)setOnline(Boolean(s.isConnected))};check();const timer=setInterval(check,15000);return()=>{mounted=false;clearInterval(timer)}},[]);
  const go=name=>navigation.navigate(name);
  return <View style={s.root}>
   <ScrollView contentContainerStyle={s.scroll}>
