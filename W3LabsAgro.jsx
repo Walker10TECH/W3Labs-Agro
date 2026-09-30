@@ -18,6 +18,7 @@ import RevisoesScreen from './Screens/RevisoesScreen';
 import AgroModuleScreen from './screens/AgroModuleScreen';
 
 const Stack=createNativeStackNavigator();
+const Module=type=>({navigation})=><AgroModuleScreen navigation={navigation} route={{params:{type}}}/>;
 
 export default function W3LabsAgro(){
  const{fontsLoaded}=useAppFonts();const[initializing,setInitializing]=useState(true);const[user,setUser]=useState(null);const[connection,setConnection]=useState('OFFLINE');
@@ -37,13 +38,13 @@ export default function W3LabsAgro(){
     <Stack.Screen name="Andamento" component={PorcentagemListaScreen}/>
     <Stack.Screen name="Pluviometro" component={PluviometroListaScreen}/>
     <Stack.Screen name="Revisoes" component={RevisoesScreen}/>
-    <Stack.Screen name="Properties"><AgroModuleScreen route={{params:{type:'properties'}}}/></Stack.Screen>
-    <Stack.Screen name="Fields"><AgroModuleScreen route={{params:{type:'fields'}}}/></Stack.Screen>
-    <Stack.Screen name="Crops"><AgroModuleScreen route={{params:{type:'crops'}}}/></Stack.Screen>
-    <Stack.Screen name="Seasons"><AgroModuleScreen route={{params:{type:'seasons'}}}/></Stack.Screen>
-    <Stack.Screen name="Activities"><AgroModuleScreen route={{params:{type:'activities'}}}/></Stack.Screen>
-    <Stack.Screen name="Documents"><AgroModuleScreen route={{params:{type:'documents'}}}/></Stack.Screen>
-    <Stack.Screen name="Reports"><AgroModuleScreen route={{params:{type:'reports'}}}/></Stack.Screen>
+    <Stack.Screen name="Properties" component={Module('properties')}/>
+    <Stack.Screen name="Fields" component={Module('fields')}/>
+    <Stack.Screen name="Crops" component={Module('crops')}/>
+    <Stack.Screen name="Seasons" component={Module('seasons')}/>
+    <Stack.Screen name="Activities" component={Module('activities')}/>
+    <Stack.Screen name="Documents" component={Module('documents')}/>
+    <Stack.Screen name="Reports" component={Module('reports')}/>
    </>}
   </Stack.Navigator>
  </NavigationContainer></PropertyProvider>
